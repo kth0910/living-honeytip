@@ -6,7 +6,7 @@
 
 /** 이미 사라진 가게를 정리한 처분인지 (위반 내용 기준) */
 const ADMIN_CLOSURE_RE =
-  /멸실|철거|휴업|폐업|소재\s*불명|영업\s*사실\s*(이\s*)?없|시설\s*(기준)?의?\s*전부를?\s*갖추지/;
+  /멸실|철거|휴업|폐업|소재\s*불명|영업\s*사실\s*(이\s*)?없|시설\s*(기준)?의?\s*전부를?\s*갖추지|사업자\s*(등록)?\s*말소|타\s*업소\s*운영|(영업소|사무소)가?\s*존재하지\s*않/;
 
 export function isAdministrativeClosure(violation: string | null | undefined): boolean {
   return !!violation && ADMIN_CLOSURE_RE.test(violation);
@@ -14,7 +14,7 @@ export function isAdministrativeClosure(violation: string | null | undefined): b
 
 /** SQL에서 같은 판정을 할 때 쓰는 정규식 (Postgres ~ 연산자용) */
 export const ADMIN_CLOSURE_SQL_RE =
-  "멸실|철거|휴업|폐업|소재\\s*불명|영업\\s*사실\\s*(이\\s*)?없|시설\\s*(기준)?의?\\s*전부를?\\s*갖추지";
+  "멸실|철거|휴업|폐업|소재\\s*불명|영업\\s*사실\\s*(이\\s*)?없|시설\\s*(기준)?의?\\s*전부를?\\s*갖추지|사업자\\s*(등록)?\\s*말소|타\\s*업소\\s*운영|(영업소|사무소)가?\\s*존재하지\\s*않";
 
 export function severityOf(actionType: string | undefined, detail?: string, violation?: string): 0 | 1 | 2 | 3 {
   const t = `${actionType ?? ""} ${detail ?? ""}`;

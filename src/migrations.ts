@@ -100,4 +100,14 @@ UPDATE hygiene_actions SET severity = 1
  WHERE violation ~ '${ADMIN_CLOSURE_SQL_RE}' AND severity > 1;
 `,
   },
+  {
+    // 폐업 정리 판정 확장(사업자등록 말소, 다른 업소 운영 중, 영업소 없음)
+    id: "004_admin_closure_more",
+    sql: `
+UPDATE hygiene_actions SET severity = 0
+ WHERE violation ~ '${ADMIN_CLOSURE_SQL_RE}'
+   AND (coalesce(action_type, '') || ' ' || coalesce(action_detail, '')) ~ '폐쇄|취소'
+   AND severity <> 0;
+`,
+  },
 ];
