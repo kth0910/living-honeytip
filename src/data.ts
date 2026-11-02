@@ -116,6 +116,7 @@ export type HygieneStats = {
   businesses: number; // 위생 관련 처분(심각도 1 이상)을 받은 업소
   actions: number;
   severe: number; // 영업정지 이상을 받은 업소
+  recent30: number; // 최근 30일 안에 새로 처분받은 업소
   closed: number; // 영업취소·폐쇄된 업소
   adminClosed: number; // 폐업 정리(위생 무관)로만 기록된 업소
 };
@@ -127,6 +128,7 @@ export async function hygieneStats(f: HygieneFilter): Promise<HygieneStats & { v
     `SELECT count(DISTINCT biz_key) FILTER (WHERE severity >= 1)::int AS businesses,
             count(*) FILTER (WHERE severity >= 1)::int AS actions,
             count(DISTINCT biz_key) FILTER (WHERE severity >= 2)::int AS severe,
+            count(DISTINCT biz_key) FILTER (WHERE severity >= 1 AND action_date >= current_date - 30)::int AS "recent30",
             count(DISTINCT biz_key) FILTER (WHERE severity >= 3)::int AS closed,
             count(DISTINCT biz_key) FILTER (WHERE severity = 0)::int AS "adminClosed"
        FROM hygiene_actions WHERE ${where}`,
@@ -138,7 +140,7 @@ export async function hygieneStats(f: HygieneFilter): Promise<HygieneStats & { v
     params,
   );
   return {
-    ...(s ?? { businesses: 0, actions: 0, severe: 0, closed: 0, adminClosed: 0 }),
+    ...(s ?? { businesses: 0, actions: 0, severe: 0, recent30: 0, closed: 0, adminClosed: 0 }),
     violations: v.map((r) => r.violation),
   };
 }

@@ -155,6 +155,7 @@ export function HygienePage(props: {
     businesses: number;
     actions: number;
     severe: number;
+    recent30: number;
     closed: number;
     adminClosed: number;
     topTags: [string, number][];
@@ -222,8 +223,8 @@ export function HygienePage(props: {
                     <div class="k">위생 처분 받은 곳</div>
                   </div>
                   <div class="stat">
-                    <div class="v num">{props.stats.severe.toLocaleString()}</div>
-                    <div class="k">영업정지 이상 받은 곳</div>
+                    <div class="v num">{props.stats.recent30.toLocaleString()}</div>
+                    <div class="k">최근 30일 새로 처분받은 곳</div>
                   </div>
                   <div class="stat">
                     <div class="v num">{props.stats.closed.toLocaleString()}</div>
