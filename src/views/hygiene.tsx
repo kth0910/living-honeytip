@@ -1,7 +1,7 @@
 import type { ActionRow, BizSummary, RegionCount } from "../data.js";
 import { SEVERITY_HINT, SEVERITY_LABEL, violationTags } from "../lib/severity.js";
 import { SIDO_ORDER } from "../lib/region.js";
-import { ago, dotDate } from "./format.js";
+import { ago, dotDate, splitViolation } from "./format.js";
 import { Empty, SearchIcon } from "./layout.js";
 
 export type HygieneQuery = {
@@ -76,16 +76,16 @@ export function SearchForm(props: { q: HygieneQuery; regions: RegionCount[]; com
           <RegionSelect regions={props.regions} value={q.region} />
           <select name="sev" aria-label="처분 수준">
             <option value="1" selected={q.sev === 1}>
-              위생 관련 처분 전체
+              위생 처분 전체
             </option>
             <option value="2" selected={q.sev === 2}>
               영업정지 이상
             </option>
             <option value="3" selected={q.sev >= 3}>
-              영업취소·폐쇄만
+              취소·폐쇄만
             </option>
             <option value="0" selected={q.sev === 0}>
-              폐업 정리까지 모두
+              폐업 정리 포함
             </option>
           </select>
           <select name="k" aria-label="업소 종류">
@@ -139,7 +139,7 @@ export function BizItem(props: { b: BizSummary }) {
           ))}
         </div>
       ) : (
-        b.last_violation && <div class="viol">{b.last_violation}</div>
+        b.last_violation && <div class="viol">{splitViolation(b.last_violation).text}</div>
       )}
     </a>
   );
@@ -219,15 +219,15 @@ export function HygienePage(props: {
                 <div class="stats">
                   <div class="stat">
                     <div class="v num">{props.stats.businesses.toLocaleString()}</div>
-                    <div class="k">처분받은 업소</div>
+                    <div class="k">위생 처분 받은 곳</div>
                   </div>
                   <div class="stat">
                     <div class="v num">{props.stats.severe.toLocaleString()}</div>
-                    <div class="k">영업정지 이상</div>
+                    <div class="k">영업정지 이상 받은 곳</div>
                   </div>
                   <div class="stat">
                     <div class="v num">{props.stats.closed.toLocaleString()}</div>
-                    <div class="k">영업취소·폐쇄</div>
+                    <div class="k">취소·폐쇄된 곳</div>
                   </div>
                 </div>
                 {props.stats.adminClosed > 0 && q.sev >= 1 && (
@@ -423,7 +423,16 @@ export function BusinessPage(props: { actions: ActionRow[] }) {
                 <SeverityBadge sev={x.severity} label={x.action_type} />
               </div>
               {x.action_detail && <p class="small muted" style="margin-top:6px">{x.action_detail}</p>}
-              {x.violation && <p style="margin-top:8px">{x.violation}</p>}
+              {x.violation &&
+                (() => {
+                  const v = splitViolation(x.violation);
+                  return (
+                    <p style="margin-top:8px">
+                      {v.date && <span class="faint small">{v.date} 적발 · </span>}
+                      {v.text}
+                    </p>
+                  );
+                })()}
               {x.law && <p class="tiny faint" style="margin-top:6px">근거: {x.law}</p>}
             </div>
           </li>

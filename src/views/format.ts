@@ -82,3 +82,10 @@ export function josa(word: string, withFinal: string, withoutFinal: string): str
   if (code < 0 || code > 11171) return `${word}${withFinal}(${withoutFinal})`;
   return word + (code % 28 ? withFinal : withoutFinal);
 }
+
+/** "(20261006)영업장 면적 변경..." → { date: "2026.10.06", text: "영업장 면적 변경..." } */
+export function splitViolation(v: string): { date: string | null; text: string } {
+  const m = v.match(/^\s*\(?(\d{4})[.\-]?(\d{2})[.\-]?(\d{2})\)?\s*/);
+  if (!m) return { date: null, text: v };
+  return { date: `${m[1]}.${m[2]}.${m[3]}`, text: v.slice(m[0].length) || v };
+}

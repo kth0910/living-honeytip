@@ -80,7 +80,10 @@ export function normalizeRow(row: Row) {
     (() => {
       const b = parseDate(pick(row, ["DSPS_BGNDT"]));
       const e = parseDate(pick(row, ["DSPS_ENDDT"]));
-      return b && e ? `${b} ~ ${e}` : undefined;
+      if (!b || !e) return undefined;
+      const days = Math.round((Date.parse(e) - Date.parse(b)) / 86400_000) + 1;
+      const end = b.slice(0, 4) === e.slice(0, 4) ? e.slice(5).replace("-", ".") : e.replaceAll("-", ".");
+      return `${b.replaceAll("-", ".")} ~ ${end}${days > 0 ? ` (${days}일)` : ""}`;
     })(),
   ].filter(Boolean);
   const law = pick(row, ["LAWORD_CD_NM", "LAWORD_NM", "VILT_LAWORD"]) ?? null;

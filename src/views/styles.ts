@@ -111,7 +111,7 @@ input:focus, select:focus { border-color: var(--brand); outline: none; box-shado
   background: var(--brand); color: var(--brand-ink); text-decoration: none; display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
 .btn.ghost { background: var(--surface-2); color: var(--text); }
 .btn.block { width: 100%; }
-.filters .btn { grid-column: 1 / -1; }
+.filters .btn { grid-column: auto; }
 @media (min-width: 720px) { .filters .btn { grid-column: auto; } }
 
 /* chips & badges */
