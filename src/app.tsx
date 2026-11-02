@@ -287,7 +287,9 @@ app.post("/cron/:job", async (c) => {
   const parsed = await parseTriggerDelivery(c.req.raw);
   if (!parsed.ok) return c.json({ error: parsed.error }, 401);
   const result = await runJob(job, `trigger:${parsed.invocation.trigger.name}`);
-  return c.json(result, result.status === "error" ? 502 : 200);
+  // 키 없음·인증 오류는 다시 시도해도 같으므로 200으로 끝내 재시도를 막는다(실패는 ingest_runs에 기록됨)
+  const permanent = /^(NO_KEY|AUTH|INFO-100|INFO-110|API-(20|22|30|31|32|33))\b/.test(result.message ?? "");
+  return c.json(result, result.status === "error" && !permanent ? 502 : 200);
 });
 
 function isAdmin(c: Context): boolean {
