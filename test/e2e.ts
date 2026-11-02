@@ -57,6 +57,17 @@ await step("empty DB renders friendly loading states", async () => {
   assert.match(h.text, /아직 위생 정보를 불러오는 중/);
 });
 
+await step("hygiene page explains a failing first ingest instead of 'loading'", async () => {
+  const saved = process.env.FOODSAFTYKOREA_OPEN_API;
+  delete process.env.FOODSAFTYKOREA_OPEN_API;
+  const r = await runJob("hygiene", "test");
+  process.env.FOODSAFTYKOREA_OPEN_API = saved;
+  assert.equal(r.status, "error");
+  const h = await get("/hygiene");
+  assert.match(h.text, /위생 정보를 아직 받아오지 못했어요/);
+  assert.match(h.text, /href="\/prices"/);
+});
+
 await step("price ingest (data.go.kr perDay format) → Postgres", async () => {
   const r = await runJob("prices", "test");
   assert.equal(r.status, "ok", JSON.stringify(r));

@@ -168,6 +168,7 @@ app.get("/hygiene", async (c) => {
         pageSize={pageSize}
         stats={stats}
         hasData={!!any[0]?.ok}
+        ingestFailing={!runs.hygiene?.lastOk && runs.hygiene?.last?.status === "error"}
         regionLabel={region || "전국"}
         periodLabel={periodLabel}
       />

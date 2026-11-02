@@ -141,6 +141,8 @@ export function HygienePage(props: {
   pageSize: number;
   stats: { businesses: number; actions: number; severe: number; closed: number; topTags: [string, number][] } | null;
   hasData: boolean;
+  /** 마지막 수집이 실패했으면 true (빈 화면에서 '잠시 후' 대신 정확한 안내) */
+  ingestFailing?: boolean;
   regionLabel: string;
   periodLabel: string;
 }) {
@@ -169,9 +171,18 @@ export function HygienePage(props: {
 
       {!props.hasData ? (
         <div style="margin-top:20px">
-          <Empty icon="⏳" title="아직 위생 정보를 불러오는 중이에요">
-            처음 한 번은 전국 자료를 모으는 데 시간이 걸려요. 잠시 후 다시 확인해 주세요.
-          </Empty>
+          {props.ingestFailing ? (
+            <Empty icon="🛠️" title="위생 정보를 아직 받아오지 못했어요">
+              <p>식품안전나라 자료를 가져오는 데 문제가 있어 확인하고 있어요.</p>
+              <p>
+                그동안 <a href="/prices">이번 주 장보기 시세</a>는 바로 볼 수 있어요.
+              </p>
+            </Empty>
+          ) : (
+            <Empty icon="⏳" title="아직 위생 정보를 불러오는 중이에요">
+              처음 한 번은 전국 자료를 모으는 데 시간이 걸려요. 잠시 후 다시 확인해 주세요.
+            </Empty>
+          )}
         </div>
       ) : (
         <>
