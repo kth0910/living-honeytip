@@ -62,10 +62,17 @@ export function trendOf(r: number | null | undefined, threshold = 0.03): Trend {
 export function itemLabel(r: { item_name: string; kind_name: string }): string {
   const kind = r.kind_name?.trim();
   if (!kind || kind === r.item_name || kind === "일반" || kind === "-") return r.item_name;
-  // "대파(1kg)"처럼 품종명에 단위가 붙은 경우 괄호 앞만
-  const k = kind.replace(/\(.*\)$/, "").trim();
+  // "대파(1kg)"처럼 괄호 안이 단위일 때만 괄호를 뗀다 ("국산(염장)"은 그대로)
+  const k = kind.replace(/\(\s*[\d.]+\s*(kg|g|개|구|마리|포기|L|ml)\s*\)$/i, "").trim();
   if (!k || k === r.item_name || /^[\d.]+\s*(kg|g|개|구|마리|포기|L|ml)$/i.test(k)) return r.item_name;
   return k.includes(r.item_name) ? k : `${r.item_name} · ${k}`;
+}
+
+/** 등급 표시: 의미 없는 값("-")이나 품종과 같은 값은 숨긴다 */
+export function rankLabel(r: { rank_name: string; kind_name: string }): string {
+  const g = r.rank_name?.trim();
+  if (!g || g === "-" || g === r.kind_name?.trim()) return "";
+  return g;
 }
 
 /** 받침 유무에 따라 조사 고르기: josa("대파", "이", "가") -> "대파가" */

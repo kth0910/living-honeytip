@@ -65,14 +65,15 @@ await step("price ingest (data.go.kr perDay format) → Postgres", async () => {
             count(*) FILTER (WHERE region_code = '0000')::int AS national,
             count(*) FILTER (WHERE region_code <> '0000')::int AS regional FROM price_daily`,
   );
-  assert.ok(c.dates >= 9, `dates=${c.dates}`);
+  assert.ok(c.dates >= 40, `dates=${c.dates}`); // 9주치 평일 + 1년 전 2주
   assert.ok(c.national > 0 && c.regional > 0);
   // 재실행 시 이미 있는 과거 주는 다시 받지 않는다
   const before = (mock as any).calls.length;
   const r2 = await runJob("prices", "test");
   assert.equal(r2.status, "ok");
   const perDayCalls = (mock as any).calls.slice(before).filter((u: string) => u.includes("perDay")).length;
-  assert.ok(perDayCalls <= 6, `re-run made ${perDayCalls} calls`);
+  const { PRICE_ITEMS } = await import("../src/ingest/catalog.js");
+  assert.ok(perDayCalls <= PRICE_ITEMS.length, `re-run made ${perDayCalls} calls`); // 품목당 1회(최근 구간)
 });
 
 await step("hygiene ingest (I2630 format) → Postgres with region parsing + severity", async () => {

@@ -79,21 +79,21 @@ function makeHygieneRows() {
 
 const ITEMS: { c: string; cn: string; i: string; n: string; v: string; vn: string; unit: string; sz: string; base: number }[] = [
   { c: "200", cn: "채소류", i: "211", n: "배추", v: "03", vn: "가을", unit: "포기", sz: "1", base: 4200 },
-  { c: "200", cn: "채소류", i: "232", n: "무", v: "01", vn: "가을", unit: "개", sz: "1", base: 2300 },
+  { c: "200", cn: "채소류", i: "231", n: "무", v: "01", vn: "가을", unit: "개", sz: "1", base: 2300 },
   { c: "200", cn: "채소류", i: "245", n: "양파", v: "00", vn: "양파", unit: "kg", sz: "1", base: 2600 },
   { c: "200", cn: "채소류", i: "246", n: "파", v: "00", vn: "대파", unit: "kg", sz: "1", base: 3100 },
   { c: "200", cn: "채소류", i: "225", n: "토마토", v: "00", vn: "토마토", unit: "kg", sz: "1", base: 6900 },
   { c: "200", cn: "채소류", i: "214", n: "상추", v: "02", vn: "청", unit: "g", sz: "100", base: 1200 },
   { c: "400", cn: "과일류", i: "411", n: "사과", v: "05", vn: "후지", unit: "개", sz: "10", base: 27000 },
   { c: "400", cn: "과일류", i: "412", n: "배", v: "01", vn: "신고", unit: "개", sz: "10", base: 39000 },
-  { c: "400", cn: "과일류", i: "414", n: "감귤", v: "02", vn: "노지", unit: "kg", sz: "1", base: 5200 },
-  { c: "500", cn: "축산물", i: "4301", n: "돼지고기", v: "21", vn: "삼겹살", unit: "g", sz: "100", base: 2700 },
-  { c: "500", cn: "축산물", i: "9901", n: "달걀", v: "02", vn: "특란", unit: "구", sz: "30", base: 7100 },
-  { c: "500", cn: "축산물", i: "4401", n: "닭고기", v: "00", vn: "육계", unit: "kg", sz: "1", base: 6200 },
-  { c: "600", cn: "수산물", i: "611", n: "고등어", v: "01", vn: "생선", unit: "마리", sz: "1", base: 4100 },
-  { c: "600", cn: "수산물", i: "619", n: "오징어", v: "01", vn: "냉동", unit: "마리", sz: "1", base: 5300 },
-  { c: "100", cn: "식량작물", i: "111", n: "쌀", v: "01", vn: "20kg", unit: "kg", sz: "20", base: 61000 },
-  { c: "300", cn: "특용작물", i: "312", n: "깐마늘", v: "00", vn: "국산", unit: "kg", sz: "1", base: 11500 },
+  { c: "400", cn: "과일류", i: "415", n: "감귤", v: "02", vn: "노지", unit: "kg", sz: "1", base: 5200 },
+  { c: "500", cn: "축산물", i: "4304", n: "돼지", v: "27", vn: "삼겹살", unit: "g", sz: "100", base: 2700 },
+  { c: "500", cn: "축산물", i: "9903", n: "계란", v: "23", vn: "XL30구", unit: "구", sz: "30", base: 7100 },
+  { c: "500", cn: "축산물", i: "9901", n: "닭", v: "00", vn: "육계", unit: "kg", sz: "1", base: 6200 },
+  { c: "600", cn: "수산물", i: "611", n: "고등어", v: "03", vn: "국산(염장)", unit: "손", sz: "1", base: 4100 },
+  { c: "600", cn: "수산물", i: "619", n: "물오징어", v: "01", vn: "냉동", unit: "마리", sz: "1", base: 5300 },
+  { c: "100", cn: "식량작물", i: "111", n: "쌀", v: "05", vn: "20kg(햅쌀)", unit: "kg", sz: "20", base: 61000 },
+  { c: "300", cn: "특용작물", i: "317", n: "새송이버섯", v: "00", vn: "새송이버섯", unit: "g", sz: "100", base: 900 },
 ];
 const SGG = [
   ["1101", "서울"],
@@ -147,21 +147,34 @@ export function startMock(port: number): Promise<Server> {
       if (!page.length) return res.end(JSON.stringify({ I2630: { total_count: String(rows.length), RESULT: { CODE: "INFO-200", MSG: "해당하는 데이터가 없습니다." } } }));
       return res.end(JSON.stringify({ I2630: { total_count: String(rows.length), row: page, RESULT: { CODE: "INFO-000", MSG: "정상처리되었습니다." } } }));
     }
-    // data.go.kr perDay
+    // data.go.kr perDay — 실제 API처럼 부류코드+품목코드가 없으면 0건, 기간(GTE/LTE) 조건 지원
     if (url.pathname === "/B552845/perDay/price") {
       if (url.searchParams.get("serviceKey") !== "test-datago-key") {
         res.setHeader("content-type", "application/xml");
         return res.end("<OpenAPI_ServiceResponse><cmmMsgHeader><returnAuthMsg>SERVICE_KEY_IS_NOT_REGISTERED_ERROR</returnAuthMsg><returnReasonCode>30</returnReasonCode></cmmMsgHeader></OpenAPI_ServiceResponse>");
       }
-      const ymd = url.searchParams.get("cond[exmn_ymd::EQ]")!;
-      const all = priceRows(ymd);
-      const pageNo = Number(url.searchParams.get("pageNo") || 1);
-      const num = Number(url.searchParams.get("numOfRows") || 10);
+      const sp = url.searchParams;
+      const cat = sp.get("cond[ctgry_cd::EQ]"), item = sp.get("cond[item_cd::EQ]");
+      let all: Record<string, string>[] = [];
+      if (cat && item) {
+        const eq = sp.get("cond[exmn_ymd::EQ]");
+        const from = eq ?? sp.get("cond[exmn_ymd::GTE]") ?? "20250101";
+        const to = eq ?? sp.get("cond[exmn_ymd::LTE]") ?? "20261231";
+        for (let d = new Date(`${from.slice(0, 4)}-${from.slice(4, 6)}-${from.slice(6, 8)}T00:00:00Z`); ; d.setUTCDate(d.getUTCDate() + 1)) {
+          const ymd = d.toISOString().slice(0, 10).replaceAll("-", "");
+          if (ymd > to) break;
+          all.push(...priceRows(ymd).filter((r) => r.ctgry_cd === cat && r.item_cd === item));
+        }
+        const se = sp.get("cond[se_cd::EQ]");
+        if (se) all = all.filter((r) => r.se_cd === se);
+      }
+      const pageNo = Number(sp.get("pageNo") || 1);
+      const num = Number(sp.get("numOfRows") || 10);
       const items = all.slice((pageNo - 1) * num, pageNo * num);
       return res.end(JSON.stringify({
         response: {
-          header: { resultCode: "00", resultMsg: "NORMAL SERVICE." },
-          body: { items: { item: items }, numOfRows: num, pageNo, totalCount: all.length },
+          header: { resultCode: "0", resultMsg: "정상" },
+          body: { dataType: "JSON", items: { item: items }, numOfRows: num, pageNo, totalCount: all.length },
         },
       }));
     }

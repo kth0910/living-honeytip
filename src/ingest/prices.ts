@@ -4,7 +4,8 @@
 //         ?serviceKey=&pageNo=&numOfRows=&returnType=JSON&cond[exmn_ymd::EQ]=YYYYMMDD&cond[se_cd::EQ]=01(소매)
 //  B) (선택) KAMIS 직접 키가 있으면 dailyPriceByCategoryList 로 평년 가격까지 수집
 import { query } from "../db.js";
-import { addDays, compact, fetchWithTimeout, parsePrice, pick, redact, todayKST } from "../lib/util.js";
+import { addDays, compact, fetchWithTimeout, parseDate, parsePrice, pick, redact, todayKST } from "../lib/util.js";
+import { PRICE_ITEMS } from "./catalog.js";
 
 export const CATEGORY_NAMES: Record<string, string> = {
   "100": "식량작물",
@@ -60,18 +61,24 @@ function serviceKeyParam(): string {
   return /%[0-9A-F]{2}/i.test(key) ? key : encodeURIComponent(key);
 }
 
-async function fetchPerDayPage(date: string, pageNo: number, numOfRows: number) {
+type RangeQuery = { category: string; item: string; from: string; to: string };
+
+async function fetchPerDayPage(q: RangeQuery, pageNo: number, numOfRows: number) {
+  const cond = (k: string) => encodeURIComponent(`cond[${k}]`);
   const qs = [
     `serviceKey=${serviceKeyParam()}`,
     `pageNo=${pageNo}`,
     `numOfRows=${numOfRows}`,
     `returnType=JSON`,
-    `${encodeURIComponent("cond[exmn_ymd::EQ]")}=${compact(date)}`,
-    `${encodeURIComponent("cond[se_cd::EQ]")}=01`,
+    `${cond("exmn_ymd::GTE")}=${compact(q.from)}`,
+    `${cond("exmn_ymd::LTE")}=${compact(q.to)}`,
+    `${cond("se_cd::EQ")}=01`, // 01 소매, 02 중도매
+    `${cond("ctgry_cd::EQ")}=${q.category}`,
+    `${cond("item_cd::EQ")}=${q.item}`,
   ].join("&");
   const url = `${dataGoBase()}/price?${qs}`;
   let lastErr: unknown;
-  for (let attempt = 0; attempt < 3; attempt++) {
+  for (let attempt = 0; attempt < 4; attempt++) {
     try {
       const res = await fetchWithTimeout(url, 60_000);
       const text = await res.text();
@@ -106,13 +113,21 @@ async function fetchPerDayPage(date: string, pageNo: number, numOfRows: number) 
   throw new PriceApiError(code, redact(lastErr instanceof Error ? lastErr.message : String(lastErr)));
 }
 
-async function fetchPerDayAll(date: string): Promise<Row[]> {
+/** 한 품목의 기간 자료를 모두 받아 조사일별로 나눈다 */
+async function fetchItemRange(q: RangeQuery): Promise<Map<string, Row[]>> {
   const size = 1000;
-  const first = await fetchPerDayPage(date, 1, size);
+  const first = await fetchPerDayPage(q, 1, size);
   const rows = [...first.rows];
-  const pages = Math.min(Math.ceil(first.total / size), 30);
-  for (let p = 2; p <= pages; p++) rows.push(...(await fetchPerDayPage(date, p, size)).rows);
-  return rows;
+  const pages = Math.min(Math.ceil(first.total / size), 60);
+  for (let p = 2; p <= pages; p++) rows.push(...(await fetchPerDayPage(q, p, size)).rows);
+  const byDate = new Map<string, Row[]>();
+  for (const r of rows) {
+    const d = parseDate(pick(r, ["exmn_ymd"]));
+    if (!d) continue;
+    if (!byDate.has(d)) byDate.set(d, []);
+    byDate.get(d)!.push(r);
+  }
+  return byDate;
 }
 
 function perDayPrice(row: Row): number | null {
@@ -127,8 +142,8 @@ function perDayPrice(row: Row): number | null {
 function unitLabel(row: Row): string {
   const unit = pick(row, ["unit", "unit_nm"]) ?? "";
   const size = pick(row, ["unit_sz", "unit_size"]) ?? "";
-  if (!size || /\d/.test(unit)) return unit;
-  return `${size.replace(/\.0+$/, "")}${unit}`;
+  if (!size || /^\d/.test(unit)) return unit;
+  return `${size.replace(/\.0+$/, "")}${unit}`; // "10" + "kg(그물망 3포기)" -> "10kg(그물망 3포기)"
 }
 
 /** 지역·시장별 원자료를 전국 평균 + 시군구 평균으로 묶는다 */
@@ -301,25 +316,91 @@ function provider(): "kamis" | "datago" {
   return "datago";
 }
 
-async function fetchDay(date: string): Promise<PriceRecord[]> {
-  if (provider() === "kamis") return fetchKamisAll(date);
-  return aggregatePerDay(date, await fetchPerDayAll(date));
+async function pool<T>(items: T[], n: number, fn: (t: T) => Promise<void>, deadline: number): Promise<boolean> {
+  let i = 0;
+  let timedOut = false;
+  const workers = Array.from({ length: n }, async () => {
+    while (i < items.length) {
+      if (Date.now() > deadline) {
+        timedOut = true;
+        return;
+      }
+      await fn(items[i++]);
+    }
+  });
+  await Promise.all(workers);
+  return !timedOut;
 }
 
 /**
- * 가장 최근 조사일을 찾아 저장하고, 비교용으로 1~8주 전과 1년 전 같은 시기 가격도 채운다.
+ * 공공데이터포털(aT): 품목마다 '마지막으로 받은 날 - 7일 ~ 오늘' 구간을 받는다(처음이면 9주치).
+ * 1년 전 같은 시기(2주 구간)도 한 번 받아 둔다. 오래 안 받은 품목부터 처리해서
+ * 시간이 모자라 중간에 끊겨도 다음 실행에서 이어진다.
+ */
+async function ingestDataGo(deadline: number) {
+  const today = todayKST();
+  const log: string[] = ["provider=datago"];
+  const last = new Map(
+    (await query<{ item_code: string; d: string }>(
+      `SELECT item_code, max(survey_date) AS d FROM price_daily WHERE region_code = '0000' AND source = 'datago-perday' GROUP BY item_code`,
+    )).map((r) => [r.item_code, r.d]),
+  );
+  const [st] = await query<{ state: { yearAgo?: Record<string, string> } }>(
+    `SELECT state FROM ingest_state WHERE job = 'prices_year_ago'`,
+  );
+  const yearAgo: Record<string, string> = st?.state?.yearAgo ?? {};
+  const items = [...PRICE_ITEMS].sort((a, b) => (last.get(a[1]) ?? "").localeCompare(last.get(b[1]) ?? ""));
+  let saved = 0;
+  const errors: string[] = [];
+  const done = await pool(
+    items,
+    5,
+    async ([category, item, name]) => {
+      const lastDate = last.get(item);
+      const from = lastDate ? addDays(lastDate, -7) : addDays(today, -63);
+      try {
+        const byDate = await fetchItemRange({ category, item, from, to: today });
+        const recs = [...byDate.entries()].flatMap(([d, rows]) => aggregatePerDay(d, rows));
+        saved += await upsertPrices(recs);
+        // 1년 전 같은 시기: 품목마다 한 달에 한 번만 시도
+        const ya = yearAgo[item];
+        if (!ya || Date.now() - Date.parse(ya) > 30 * 86400_000) {
+          const yb = await fetchItemRange({ category, item, from: addDays(today, -372), to: addDays(today, -355) });
+          saved += await upsertPrices([...yb.entries()].flatMap(([d, rows]) => aggregatePerDay(d, rows)));
+          yearAgo[item] = new Date().toISOString();
+        }
+      } catch (err) {
+        errors.push(`${name}: ${(err as Error).message}`);
+        if (err instanceof PriceApiError && /^(AUTH|NO_KEY|API-(20|22|30|31|32|33))$/.test(err.code)) throw err;
+      }
+    },
+    deadline,
+  );
+  await query(
+    `INSERT INTO ingest_state (job, state, updated_at) VALUES ('prices_year_ago', $1, now())
+     ON CONFLICT (job) DO UPDATE SET state = EXCLUDED.state, updated_at = now()`,
+    [JSON.stringify({ yearAgo })],
+  );
+  if (!done) log.push("시간 제한으로 일부 품목은 다음 실행에서 이어 받음");
+  if (errors.length) log.push(`오류 ${errors.length}건: ${errors.slice(0, 3).join(" / ")}`);
+  if (errors.length === items.length) throw new PriceApiError("ALL_FAILED", errors[0] ?? "모든 품목 실패");
+  const [latest] = await query<{ d: string | null }>(`SELECT max(survey_date) AS d FROM price_daily WHERE region_code = '0000'`);
+  log.push(`최근 조사일 ${latest?.d ?? "-"}`);
+  return { rows: saved, message: log.join(" · "), partial: !done || errors.length > 0 };
+}
+
+/**
+ * KAMIS(선택): 최근 조사일을 찾아 저장하고, 1~8주 전과 1년 전 같은 시기도 채운다.
  * (주말·공휴일은 조사가 없어서 앞쪽 날짜로 최대 며칠씩 물러나며 찾는다)
  */
-export async function ingestPrices(opts: { budgetMs?: number } = {}) {
-  const deadline = Date.now() + (opts.budgetMs ?? 8 * 60_000);
-  const log: string[] = [`provider=${provider()}`];
+async function ingestKamis(deadline: number) {
+  const log: string[] = ["provider=kamis"];
   let saved = 0;
-
   const today = todayKST();
   let latest: string | null = null;
   for (let i = 0; i <= 7 && !latest; i++) {
     const d = addDays(today, -i);
-    const recs = await fetchDay(d);
+    const recs = await fetchKamisAll(d);
     if (recs.length) {
       saved += await upsertPrices(recs);
       latest = d;
@@ -327,36 +408,32 @@ export async function ingestPrices(opts: { budgetMs?: number } = {}) {
   }
   if (!latest) return { rows: 0, message: "최근 7일간 조사 자료가 없습니다", partial: true };
   log.push(`최근 조사일 ${latest}`);
-
   const have = new Set(
     (await query<{ d: string }>(
       `SELECT DISTINCT survey_date AS d FROM price_daily WHERE region_code = '0000' AND survey_date >= $1`,
       [addDays(latest, -400)],
     )).map((r) => r.d),
   );
-  const targets = [7, 14, 21, 28, 35, 42, 49, 56, 364].map((n) => addDays(latest!, -n));
   let partial = false;
-  for (const target of targets) {
+  for (const n of [7, 14, 21, 28, 35, 42, 49, 56, 364]) {
+    const target = addDays(latest, -n);
     if (Date.now() > deadline) {
       partial = true;
       break;
     }
-    // 이미 그 주(목표일 포함 이전 3일)에 자료가 있으면 건너뛴다
     if ([0, 1, 2, 3].some((k) => have.has(addDays(target, -k)))) continue;
     for (let k = 0; k <= 3; k++) {
-      const d = addDays(target, -k);
-      try {
-        const recs = await fetchDay(d);
-        if (recs.length) {
-          saved += await upsertPrices(recs);
-          break;
-        }
-      } catch (err) {
-        log.push(`${d}: ${(err as Error).message}`);
-        partial = true;
+      const recs = await fetchKamisAll(addDays(target, -k));
+      if (recs.length) {
+        saved += await upsertPrices(recs);
         break;
       }
     }
   }
   return { rows: saved, message: log.join(" · "), partial };
+}
+
+export async function ingestPrices(opts: { budgetMs?: number } = {}) {
+  const deadline = Date.now() + (opts.budgetMs ?? 8 * 60_000);
+  return provider() === "kamis" ? ingestKamis(deadline) : ingestDataGo(deadline);
 }

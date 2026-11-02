@@ -182,9 +182,19 @@ export async function priceRegions(date: string): Promise<{ region_code: string;
   );
 }
 
+/**
+ * 기준 조사일: 주말·공휴일엔 일부 품목만 조사되므로, 최근 3주 중 가장 많이 조사된 날의
+ * 60% 이상 품목이 있는 가장 최근 날짜를 쓴다.
+ */
 export async function latestPriceDate(region = "0000"): Promise<string | null> {
   const [r] = await query<{ d: string | null }>(
-    `SELECT max(survey_date) AS d FROM price_daily WHERE region_code = $1`,
+    `WITH recent AS (
+       SELECT survey_date, count(*) AS n FROM price_daily
+        WHERE region_code = $1
+          AND survey_date >= (SELECT max(survey_date) FROM price_daily WHERE region_code = $1) - 21
+        GROUP BY survey_date
+     )
+     SELECT max(survey_date) AS d FROM recent WHERE n >= 0.6 * (SELECT max(n) FROM recent)`,
     [region],
   );
   return r?.d ?? null;

@@ -1,7 +1,7 @@
 import type { HistoryPoint, PriceRow } from "../data.js";
 import { weeklyChange } from "../data.js";
 import { SearchIcon, Empty } from "./layout.js";
-import { itemLabel, josa, koDate, pct, trendOf, won, dotDate, type Trend } from "./format.js";
+import { itemLabel, rankLabel, josa, koDate, pct, trendOf, won, dotDate, type Trend } from "./format.js";
 
 const CAT_ORDER = ["200", "400", "500", "600", "100", "300"];
 const CAT_SHORT: Record<string, string> = {
@@ -234,7 +234,7 @@ export function PricesPage(props: {
                         <span class="nm">{itemLabel(r)}</span>{" "}
                         <span class="u">
                           {r.unit}
-                          {r.rank_name ? ` · ${r.rank_name}` : ""}
+                          {rankLabel(r) ? ` · ${rankLabel(r)}` : ""}
                         </span>
                       </span>
                       <span class="pr num">{won(r.price)}</span>
@@ -355,7 +355,7 @@ export function PriceItemPage(props: {
       <h1>{itemLabel(r)}</h1>
       <p class="muted">
         {r.unit}
-        {r.rank_name ? ` · ${r.rank_name}` : ""} · {catShort(r.category_code, r.category_name)} · {koDate(r.survey_date)} 조사 ·{" "}
+        {rankLabel(r) ? ` · ${rankLabel(r)}` : ""} · {catShort(r.category_code, r.category_name)} · {koDate(r.survey_date)} 조사 ·{" "}
         {props.regionName} 평균
       </p>
       <div class="card pad stack" style="margin-top:12px">
