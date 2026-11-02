@@ -65,11 +65,26 @@ TEST_DATABASE_URL=postgres://... npm test   # E2E (실제 Postgres + 응답 형�
 
 `npm test`는 `TEST_DATABASE_URL` DB의 public 스키마를 지우고 다시 만듭니다. 운영 DB를 넣지 마세요.
 
-## 확인이 필요한 부분
+## 실제 데이터로 확인한 사항
 
-개발 환경에서 원본 API에 접속할 수 없었습니다. 아래는 공개 문서와 공개 코드로 맞춘 부분입니다.
+- **aT 가격 API (`apis.data.go.kr/B552845/perDay/price`)**
+  - 부류코드(`ctgry_cd`)와 품목코드(`item_cd`)를 함께 줘야만 결과가 나옵니다. 날짜만으로 조회하면 0건입니다.
+  - 그래서 소매(`se_cd=01`) 가격이 있는 86개 품목을 `src/ingest/catalog.ts`에 두고, 품목별로 기간(`GTE`/`LTE`)을 정해 조회합니다.
+  - 주말에는 일부 품목만 조사되므로, 대부분의 품목이 조사된 최근 날짜를 기준일로 씁니다.
+- **식품안전나라 행정처분**
+  - `I2630`(식품접객업)과 `I0470`(식품업 전체)을 함께 받아 중복을 제거합니다. 필드는 같습니다.
+  - 날짜 필터(`/DSPS_DCSNDT=`)는 동작하지 않아 전체 목록을 순회합니다(합계 약 8,600건, 1,000건씩 9번 호출).
+  - 오늘 자료는 19시 이후에만 받을 수 있습니다.
+  - 해외 IP에서도 응답합니다. Neon 싱가포르 리전에서 확인했습니다.
+- **폐업 정리:** 처분의 약 88%는 시설 철거·멸실, 장기 휴업, 사업자등록 말소처럼 이미 문 닫은 가게를 서류상 정리한 `영업소폐쇄`입니다.
+  - 심각도 0 '폐업 정리(위생 무관)'로 분리합니다(`src/lib/severity.ts`).
+  - 동네 둘러보기 목록과 요약에서는 기본으로 빼고, 가게 이름으로 검색할 때는 함께 보여줍니다.
+- **공개 범위:** 공개되는 처분은 사실상 영업정지 이상입니다. 과태료는 거의 포함되지 않습니다.
 
-- **aT perDay 응답 필드 이름:** `item_nm`, `vrty_nm`, `grd_nm`, `sgg_nm`, `unit`, `unit_sz`, `exmn_dd_prc` 등으로 맞췄습니다. 요청 파라미터(`cond[exmn_ymd::EQ]`, `cond[se_cd::EQ]=01` 등)는 공개 코드로 확인했습니다. 수집기는 여러 후보 필드명을 차례로 시도하고, 가격 필드는 이름에 `prc`가 들어간 필드로 대체합니다.
-- **행정처분 필드 이름:** 배포한 함수에서 실제 I0470 응답으로 확인했습니다 (`PRCSCITYPOINT_BSSHNM`, `INDUTY_CD_NM`, `ADDR`, `DSPS_DCSNDT`, `DSPS_TYPECD_NM`, `DSPSCN`, `VILTCN`, `LAWORD_CD_NM`, `LCNS_NO` 등). `GET /admin/probe/hygiene?svc=…`(관리 토큰 필요)로 다시 볼 수 있습니다.
-- **무단멸실:** 폐업 신고 없이 사라진 가게에 대한 `영업소폐쇄`는 위생 위반이 아니므로 가장 낮은 단계로 두고 '폐업 미신고(위생 무관)' 태그를 붙입니다.
-- **식품안전나라 날짜 필터(`/DSPS_DCSNDT=YYYYMMDD`):** 동작하지 않으면 수집기가 이를 감지하고 전체 순회만 사용합니다.
+## 이 개발 환경에서 배포할 때
+
+`api.neon.tech`가 막힌 환경에서는 같은 API를 `console.neon.tech` 주소로 쓸 수 있습니다.
+
+```bash
+NEON_API_HOST=https://console.neon.tech/api/v2 neon deploy --env .env.local
+```
