@@ -1,5 +1,6 @@
 import { query } from "./db.js";
 import { addDays } from "./lib/util.js";
+import { EAT_TYPES } from "./lib/severity.js";
 
 /* ----------------------------- 공통 ----------------------------- */
 
@@ -48,6 +49,8 @@ export type HygieneFilter = {
   sigungu?: string | null;
   minSeverity?: number;
   sinceDays?: number | null;
+  /** true면 식당·카페(EAT_TYPES)만 */
+  eatOnly?: boolean;
   page?: number;
   pageSize?: number;
 };
@@ -70,6 +73,10 @@ function hygieneWhere(f: HygieneFilter, params: unknown[]): string {
   if (f.sinceDays) {
     params.push(f.sinceDays);
     where.push(`action_date >= current_date - $${params.length}::int`);
+  }
+  if (f.eatOnly) {
+    params.push(EAT_TYPES);
+    where.push(`biz_type = ANY($${params.length}::text[])`);
   }
   return where.join(" AND ");
 }
@@ -105,24 +112,35 @@ export async function searchBusinesses(f: HygieneFilter): Promise<{ items: BizSu
   return { items: rows, total: rows[0]?.total ?? 0 };
 }
 
-export type HygieneStats = { businesses: number; actions: number; severe: number; closed: number; tags: string[] };
+export type HygieneStats = {
+  businesses: number; // 위생 관련 처분(심각도 1 이상)을 받은 업소
+  actions: number;
+  severe: number; // 영업정지 이상
+  closed: number; // 영업취소·폐쇄
+  adminClosed: number; // 폐업 정리(위생 무관)로만 기록된 업소
+};
 
 export async function hygieneStats(f: HygieneFilter): Promise<HygieneStats & { violations: string[] }> {
   const params: unknown[] = [];
   const where = hygieneWhere(f, params);
-  const [s] = await query<{ businesses: number; actions: number; severe: number; closed: number }>(
-    `SELECT count(DISTINCT biz_key)::int AS businesses, count(*)::int AS actions,
+  const [s] = await query<HygieneStats>(
+    `SELECT count(DISTINCT biz_key) FILTER (WHERE severity >= 1)::int AS businesses,
+            count(*) FILTER (WHERE severity >= 1)::int AS actions,
             count(*) FILTER (WHERE severity >= 2)::int AS severe,
-            count(*) FILTER (WHERE severity >= 3)::int AS closed
+            count(*) FILTER (WHERE severity >= 3)::int AS closed,
+            count(DISTINCT biz_key) FILTER (WHERE severity = 0)::int AS "adminClosed"
        FROM hygiene_actions WHERE ${where}`,
     params,
   );
   const v = await query<{ violation: string }>(
-    `SELECT violation FROM hygiene_actions WHERE ${where} AND violation IS NOT NULL
+    `SELECT violation FROM hygiene_actions WHERE ${where} AND violation IS NOT NULL AND severity >= 1
       ORDER BY action_date DESC NULLS LAST LIMIT 500`,
     params,
   );
-  return { ...(s ?? { businesses: 0, actions: 0, severe: 0, closed: 0 }), tags: [], violations: v.map((r) => r.violation) };
+  return {
+    ...(s ?? { businesses: 0, actions: 0, severe: 0, closed: 0, adminClosed: 0 }),
+    violations: v.map((r) => r.violation),
+  };
 }
 
 export type ActionRow = {

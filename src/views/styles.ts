@@ -106,13 +106,13 @@ input[type="search"] { padding-left: 44px; font-size: 17px; }
 input:focus, select:focus { border-color: var(--brand); outline: none; box-shadow: 0 0 0 3px var(--brand-soft); }
 .filters { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .filters > select:first-child { grid-column: 1 / -1; }
-@media (min-width: 640px) { .filters { grid-template-columns: 1.4fr 1fr 1fr auto; } .filters > select:first-child { grid-column: auto; } }
+@media (min-width: 720px) { .filters { grid-template-columns: 1.3fr 1fr 1fr 1fr auto; } .filters > select:first-child { grid-column: auto; } }
 .btn { font: inherit; font-weight: 700; border: 0; border-radius: 12px; min-height: 48px; padding: 10px 18px; cursor: pointer;
   background: var(--brand); color: var(--brand-ink); text-decoration: none; display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
 .btn.ghost { background: var(--surface-2); color: var(--text); }
 .btn.block { width: 100%; }
 .filters .btn { grid-column: 1 / -1; }
-@media (min-width: 640px) { .filters .btn { grid-column: auto; } }
+@media (min-width: 720px) { .filters .btn { grid-column: auto; } }
 
 /* chips & badges */
 .chips { display: flex; gap: 6px; overflow-x: auto; padding: 2px 0 6px; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
@@ -124,6 +124,7 @@ input:focus, select:focus { border-color: var(--brand); outline: none; box-shado
 .sev3 { background: var(--sev3-soft); color: var(--sev3); }
 .sev2 { background: var(--sev2-soft); color: var(--sev2); }
 .sev1 { background: var(--sev1-soft); color: var(--sev1); }
+.sev0 { background: transparent; color: var(--faint); border: 1px dashed var(--line); }
 .tag { font-size: 13px; color: var(--muted); background: var(--surface-2); border-radius: 6px; padding: 2px 8px; white-space: nowrap; }
 .up { color: var(--up); }
 .down { color: var(--down); }
@@ -162,7 +163,7 @@ input:focus, select:focus { border-color: var(--brand); outline: none; box-shado
 .timeline li::before { content: ""; position: absolute; left: 7px; top: 22px; bottom: 0; width: 2px; background: var(--line); }
 .timeline li:last-child::before { display: none; }
 .timeline .dot { position: absolute; left: 0; top: 5px; width: 16px; height: 16px; border-radius: 50%; border: 3px solid var(--surface); box-shadow: 0 0 0 2px var(--line); }
-.dot.s3 { background: var(--sev3); } .dot.s2 { background: var(--sev2); } .dot.s1 { background: var(--faint); }
+.dot.s3 { background: var(--sev3); } .dot.s2 { background: var(--sev2); } .dot.s1 { background: var(--faint); } .dot.s0 { background: var(--line); }
 
 .callout { border-radius: 12px; padding: 12px 14px; background: var(--brand-soft); font-size: 14.5px; }
 .callout.warn { background: var(--sev2-soft); }

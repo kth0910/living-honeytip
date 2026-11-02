@@ -90,6 +90,7 @@ await step("price ingest (data.go.kr perDay format) → Postgres", async () => {
 await step("hygiene ingest (I2630 format) → Postgres with region parsing + severity", async () => {
   const r = await runJob("hygiene", "test");
   assert.equal(r.status, "ok", JSON.stringify(r));
+  assert.match(r.message, /I2630: INFO-110 사용 불가/); // 신청 안 된 서비스는 건너뜀
   const [c] = await query<{ n: number; regions: number; sev3: number; nosido: number }>(
     `SELECT count(*)::int AS n, count(DISTINCT sigungu)::int AS regions,
             count(*) FILTER (WHERE severity = 3)::int AS sev3,
@@ -142,6 +143,23 @@ await step("hygiene search, filters, region cookie, detail page", async () => {
   const cards = severe.text.split('<a class="biz"').slice(1).map((c) => c.split("</a>")[0]);
   assert.ok(cards.length > 0, "expected severe results");
   assert.ok(cards.every((c) => c.includes("badge sev3")), "severity filter should only list 영업취소·폐쇄 businesses");
+  // 무단멸실(폐업 미신고)은 위생 위반이 아니므로 가장 낮은 단계 + 설명 태그
+  const closed = await get("/hygiene?p=all&q=" + encodeURIComponent("예시폐업식당"));
+  assert.match(closed.text, /폐업 정리\(위생 무관\)/);
+  assert.match(closed.text, /badge sev0/);
+  // 둘러보기 목록·요약에서는 빠지고, 빠졌다는 안내가 나온다
+  const mapo = await get("/hygiene?p=all&r=" + encodeURIComponent("서울 마포구"));
+  assert.ok(!mapo.text.includes("예시폐업식당"), "admin closure hidden when browsing");
+  assert.match(mapo.text, /서류상 정리된 가게 1곳/);
+  const withAdmin = await get("/hygiene?p=all&sev=0&r=" + encodeURIComponent("서울 마포구"));
+  assert.match(withAdmin.text, /예시폐업식당/);
+  // 동네 둘러보기는 식당·카페만, 이름 검색은 모든 업소
+  const browse = await get("/hygiene?r=" + encodeURIComponent("서울 강남구") + "&p=all");
+  assert.ok(!browse.text.includes("예시건강식품판매점"), "non-restaurant hidden in default browse");
+  const allScope = await get("/hygiene?r=" + encodeURIComponent("서울 강남구") + "&p=all&k=all");
+  assert.match(allScope.text, /예시건강식품판매점/);
+  const byName = await get("/hygiene?q=" + encodeURIComponent("예시건강식품"));
+  assert.match(byName.text, /예시건강식품판매점/);
   const bad = await get("/hygiene/b/zzzz");
   assert.equal(bad.status, 404);
 });
@@ -185,6 +203,8 @@ await step("cron route requires a trigger delivery; admin route requires token",
   const probe = await get("/admin/probe/hygiene", { headers: { authorization: "Bearer test-admin-token" } });
   assert.equal(probe.status, 200);
   assert.ok(JSON.parse(probe.text).keys.includes("PRCSCITYPOINT_BSSHNM"));
+  const wrongSvc = await get("/admin/probe/hygiene?svc=I2630", { headers: { authorization: "Bearer test-admin-token" } });
+  assert.match(wrongSvc.text, /INFO-110/);
 });
 
 await step("healthz + about reflect ingest runs", async () => {

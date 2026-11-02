@@ -109,7 +109,7 @@ app.get("/", async (c) => {
   const { sido, sigungu } = splitRegionParam(region);
   const [regions, recent, runs, date] = await Promise.all([
     hygieneRegions(),
-    searchBusinesses({ sido, sigungu, sinceDays: 365, pageSize: 5 }),
+    searchBusinesses({ sido, sigungu, sinceDays: 365, eatOnly: true, pageSize: 5 }),
     lastRuns(),
     latestPriceDate(),
   ]);
@@ -130,24 +130,32 @@ app.get("/", async (c) => {
 app.get("/hygiene", async (c) => {
   const q = (c.req.query("q") ?? "").trim().slice(0, 60);
   const region = rememberedHygieneRegion(c);
-  const sev = Math.min(3, Math.max(1, Number(c.req.query("sev")) || 1));
+  // 처분 수준: 둘러볼 땐 위생 관련(1+)만, 가게 이름으로 찾을 땐 폐업 정리(0)까지 모두
+  const sevParam = c.req.query("sev");
+  const sevNum = Number(sevParam);
+  const sev = sevParam !== undefined && sevParam !== "" && Number.isFinite(sevNum)
+    ? Math.min(3, Math.max(0, Math.trunc(sevNum)))
+    : (c.req.query("q") ?? "").trim() ? 0 : 1;
   const pParam = c.req.query("p");
   const period = pParam === "1y" || pParam === "3y" || pParam === "all" ? pParam : q ? "all" : "1y";
   const page = Math.min(500, Math.max(1, Number(c.req.query("page")) || 1));
-  const hq: HygieneQuery = { q, region, sev, period, page };
+  // 가게 이름으로 찾을 땐 모든 업소, 동네 둘러보기는 식당·카페만이 기본
+  const kParam = c.req.query("k");
+  const scope = kParam === "eat" || kParam === "all" ? kParam : q ? "all" : "eat";
+  const hq: HygieneQuery = { q, region, sev, period, scope, page };
   const { sido, sigungu } = splitRegionParam(region);
   const sinceDays = period === "1y" ? 365 : period === "3y" ? 1095 : null;
   const pageSize = 20;
 
   const [regions, result, runs, any] = await Promise.all([
     hygieneRegions(),
-    searchBusinesses({ q, sido, sigungu, minSeverity: sev, sinceDays, page, pageSize }),
+    searchBusinesses({ q, sido, sigungu, minSeverity: sev, sinceDays, eatOnly: scope === "eat", page, pageSize }),
     lastRuns(),
     query<{ ok: boolean }>(`SELECT EXISTS (SELECT 1 FROM hygiene_actions) AS ok`),
   ]);
   let stats = null;
   if (!q && any[0]?.ok) {
-    const s = await hygieneStats({ sido, sigungu, sinceDays });
+    const s = await hygieneStats({ sido, sigungu, sinceDays, eatOnly: scope === "eat" });
     const counts = new Map<string, number>();
     for (const v of s.violations) for (const t of violationTags(v)) counts.set(t, (counts.get(t) ?? 0) + 1);
     stats = { ...s, topTags: [...counts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 5) };
@@ -359,7 +367,9 @@ app.post("/admin/seed-prices", async (c) => {
 app.get("/admin/probe/hygiene", async (c) => {
   if (!isAdmin(c)) return c.json({ error: "unauthorized" }, 401);
   try {
-    const { total, rows } = await fetchFoodSafetyPage(1, 3);
+    const svc = c.req.query("svc") ?? (process.env.FOODSAFETY_SERVICE || "I0470");
+    if (!/^[A-Z][0-9A-Z]{3,5}$/.test(svc)) return c.json({ error: "bad svc" }, 400);
+    const { total, rows } = await fetchFoodSafetyPage(1, 3, undefined, svc);
     return c.json({ total, keys: rows[0] ? Object.keys(rows[0]) : [], sample: rows.slice(0, 2) });
   } catch (err) {
     return c.json({ error: redact(`${(err as any).code ?? ""} ${(err as Error).message}`) }, 502);

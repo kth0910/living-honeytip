@@ -62,6 +62,30 @@ function makeHygieneRows() {
       }
     }
   }
+  // 식당이 아닌 식품업소 1건 (범위 필터 테스트)
+  rows.push({
+    PRCSCITYPOINT_BSSHNM: "예시건강식품판매점",
+    INDUTY_CD_NM: "건강기능식품일반판매업",
+    LCNS_NO: "",
+    ADDR: "서울특별시 강남구 예시로5길 5",
+    DSPS_DCSNDT: "20261028",
+    DSPS_TYPECD_NM: "과태료부과",
+    DSPSCN: "과태료 50만원",
+    VILTCN: "(20261001)표시기준 위반",
+    LAWORD_CD_NM: "건강기능식품에 관한 법률",
+  });
+  // 위생과 무관한 행정 정리(무단멸실) 1건
+  rows.push({
+    PRCSCITYPOINT_BSSHNM: "예시폐업식당",
+    INDUTY_CD_NM: "일반음식점",
+    LCNS_NO: "",
+    ADDR: "서울특별시 마포구 예시로99길 9",
+    DSPS_DCSNDT: "20261020",
+    DSPS_TYPECD_NM: "영업소폐쇄",
+    DSPSCN: "영업소폐쇄",
+    VILTCN: "(20260901)무단멸실",
+    LAWORD_CD_NM: "식품위생법 제75조(허가취소 등) 3항",
+  });
   // 오늘 처분 1건 (최근 필터 테스트)
   rows.push({
     PRCSCITYPOINT_BSSHNM: "가나다김밥 역삼본점",
@@ -134,18 +158,20 @@ export function startMock(port: number): Promise<Server> {
     calls.push(url.pathname + url.search);
     res.setHeader("content-type", "application/json; charset=utf-8");
     // 식품안전나라: /api/{key}/I2630/json/{start}/{end}[/FILTER=V]
-    const m = url.pathname.match(/^\/api\/([^/]+)\/I2630\/json\/(\d+)\/(\d+)(?:\/(.*))?$/);
+    const m = url.pathname.match(/^\/api\/([^/]+)\/(I0470|I2630)\/json\/(\d+)\/(\d+)(?:\/(.*))?$/);
     if (m) {
-      if (m[1] !== "test-food-key") return res.end(JSON.stringify({ I2630: { RESULT: { CODE: "INFO-100", MSG: "인증키가 유효하지 않습니다." } } }));
+      const svc = m[2];
+      if (m[1] !== "test-food-key") return res.end(JSON.stringify({ [svc]: { RESULT: { CODE: "INFO-100", MSG: "인증키가 유효하지 않습니다." } } }));
+      if (svc !== "I0470") return res.end(JSON.stringify({ [svc]: { RESULT: { CODE: "INFO-110", MSG: "활용신청 내역이 없습니다." } } }));
       let rows = hygiene;
-      if (m[4]) {
-        const [k, v] = decodeURIComponent(m[4]).split("=");
+      if (m[5]) {
+        const [k, v] = decodeURIComponent(m[5]).split("=");
         rows = rows.filter((r) => r[k] === v);
       }
-      const s = Number(m[2]), e = Number(m[3]);
+      const s = Number(m[3]), e = Number(m[4]);
       const page = rows.slice(s - 1, e);
-      if (!page.length) return res.end(JSON.stringify({ I2630: { total_count: String(rows.length), RESULT: { CODE: "INFO-200", MSG: "해당하는 데이터가 없습니다." } } }));
-      return res.end(JSON.stringify({ I2630: { total_count: String(rows.length), row: page, RESULT: { CODE: "INFO-000", MSG: "정상처리되었습니다." } } }));
+      if (!page.length) return res.end(JSON.stringify({ [svc]: { total_count: String(rows.length), RESULT: { CODE: "INFO-200", MSG: "해당하는 데이터가 없습니다." } } }));
+      return res.end(JSON.stringify({ [svc]: { total_count: String(rows.length), row: page, RESULT: { CODE: "INFO-000", MSG: "정상처리되었습니다." } } }));
     }
     // data.go.kr perDay — 실제 API처럼 부류코드+품목코드가 없으면 0건, 기간(GTE/LTE) 조건 지원
     if (url.pathname === "/B552845/perDay/price") {

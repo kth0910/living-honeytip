@@ -4,7 +4,7 @@ import { defineConfig } from "@neon/config/v1";
 // Only keys that are actually set are uploaded: an unset key is left out instead of
 // being written as "" (which would delete the live value).
 const SECRET_KEYS = [
-  "FOODSAFTYKOREA_OPEN_API", // 식품안전나라 Open API 인증키 (I2630 행정처분결과)
+  "FOODSAFTYKOREA_OPEN_API", // 식품안전나라 Open API 인증키 (I0470 행정처분결과)
   "DATAKR_API_KEY", // 공공데이터포털 serviceKey (aT 일별 도·소매 가격정보)
   "KAMIS_CERT_KEY", // (선택) KAMIS 직접 키 — 있으면 평년 가격까지 사용
   "KAMIS_CERT_ID",

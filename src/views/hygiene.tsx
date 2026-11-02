@@ -7,13 +7,14 @@ import { Empty, SearchIcon } from "./layout.js";
 export type HygieneQuery = {
   q: string;
   region: string; // "" | "서울" | "서울 강남구"
-  sev: number; // 1 | 2 | 3
+  sev: number; // 0 폐업 정리까지 | 1 위생 관련 전체 | 2 영업정지 이상 | 3 영업취소·폐쇄
   period: string; // "1y" | "3y" | "all"
+  scope: string; // "eat" 식당·카페만 | "all" 모든 식품업소
   page: number;
 };
 
 export function SeverityBadge(props: { sev: number; label?: string | null }) {
-  const icon = props.sev >= 3 ? "⛔" : props.sev === 2 ? "⚠️" : "ℹ️";
+  const icon = props.sev >= 3 ? "⛔" : props.sev === 2 ? "⚠️" : props.sev === 1 ? "ℹ️" : "📦";
   return (
     <span class={`badge sev${props.sev}`} title={SEVERITY_HINT[props.sev]}>
       <span aria-hidden="true">{icon}</span>
@@ -74,14 +75,25 @@ export function SearchForm(props: { q: HygieneQuery; regions: RegionCount[]; com
         <div class="filters">
           <RegionSelect regions={props.regions} value={q.region} />
           <select name="sev" aria-label="처분 수준">
-            <option value="1" selected={q.sev <= 1}>
-              모든 처분
+            <option value="1" selected={q.sev === 1}>
+              위생 관련 처분 전체
             </option>
             <option value="2" selected={q.sev === 2}>
               영업정지 이상
             </option>
             <option value="3" selected={q.sev >= 3}>
               영업취소·폐쇄만
+            </option>
+            <option value="0" selected={q.sev === 0}>
+              폐업 정리까지 모두
+            </option>
+          </select>
+          <select name="k" aria-label="업소 종류">
+            <option value="eat" selected={q.scope === "eat"}>
+              식당·카페만
+            </option>
+            <option value="all" selected={q.scope === "all"}>
+              모든 식품업소
             </option>
           </select>
           <select name="p" aria-label="기간">
@@ -139,7 +151,14 @@ export function HygienePage(props: {
   items: BizSummary[];
   total: number;
   pageSize: number;
-  stats: { businesses: number; actions: number; severe: number; closed: number; topTags: [string, number][] } | null;
+  stats: {
+    businesses: number;
+    actions: number;
+    severe: number;
+    closed: number;
+    adminClosed: number;
+    topTags: [string, number][];
+  } | null;
   hasData: boolean;
   /** 마지막 수집이 실패했으면 true (빈 화면에서 '잠시 후' 대신 정확한 안내) */
   ingestFailing?: boolean;
@@ -154,8 +173,9 @@ export function HygienePage(props: {
     const u = new URLSearchParams();
     if (s.q) u.set("q", s.q);
     if (s.region) u.set("r", s.region);
-    if (s.sev > 1) u.set("sev", String(s.sev));
+    u.set("sev", String(s.sev));
     if (s.period !== "1y") u.set("p", s.period);
+    u.set("k", s.scope);
     if (page > 1) u.set("page", String(page));
     return `/hygiene?${u}`;
   };
@@ -190,6 +210,10 @@ export function HygienePage(props: {
             <section aria-labelledby="sum-h">
               <h2 id="sum-h">
                 {props.regionLabel} · {props.periodLabel} 요약
+                <span class="faint small" style="font-weight:500">
+                  {" "}
+                  ({q.scope === "eat" ? "식당·카페" : "모든 식품업소"})
+                </span>
               </h2>
               <div class="card pad stack">
                 <div class="stats">
@@ -206,6 +230,13 @@ export function HygienePage(props: {
                     <div class="k">영업취소·폐쇄</div>
                   </div>
                 </div>
+                {props.stats.adminClosed > 0 && q.sev >= 1 && (
+                  <p class="small muted" style="margin:0">
+                    이미 문을 닫아 서류상 정리된 가게 {props.stats.adminClosed.toLocaleString()}곳은 위생과 관련이 없어
+                    목록에서 뺐어요.{" "}
+                    <a href={link(1, { sev: 0 })}>함께 보기</a>
+                  </p>
+                )}
                 {props.stats.topTags.length > 0 && (
                   <div>
                     <div class="small muted" style="margin-bottom:6px">
@@ -303,6 +334,10 @@ export function HygienePage(props: {
                 <p>
                   <SeverityBadge sev={1} /> {SEVERITY_HINT[1]}
                 </p>
+                <p>
+                  <SeverityBadge sev={0} /> {SEVERITY_HINT[0]} 시설을 모두 철거했거나 오래 휴업한 가게를 정리한
+                  기록이라, 동네 목록과 요약에서는 기본으로 빼고 보여드려요.
+                </p>
                 <p class="muted">
                   처분 사유에는 위생과 직접 관련 없는 것(위생교육 미이수, 청소년 주류 제공 등)도 있으니 위반 내용을 함께
                   확인하세요.
@@ -350,6 +385,11 @@ export function BusinessPage(props: { actions: ActionRow[] }) {
         ))}
       </div>
 
+      {max === 0 && (
+        <div class="callout good" style="margin-bottom:10px">
+          <b>위생 위반 기록은 없어요.</b> 이 가게는 이미 문을 닫아 서류상 정리된 기록만 있어요.
+        </div>
+      )}
       <div class={`callout ${max >= 2 ? "warn" : ""}`}>
         <div class="row">
           <SeverityBadge sev={max} />

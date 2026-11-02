@@ -1,3 +1,5 @@
+import { ADMIN_CLOSURE_SQL_RE } from "./lib/severity.js";
+
 // Schema as code. Append new migrations; never edit an applied one.
 export const MIGRATIONS: { id: string; sql: string }[] = [
   {
@@ -77,6 +79,25 @@ CREATE TABLE ingest_state (
   state      jsonb NOT NULL DEFAULT '{}'::jsonb,
   updated_at timestamptz NOT NULL DEFAULT now()
 );
+`,
+  },
+  {
+    // 폐업 신고 없이 사라진 가게(무단멸실 등)의 영업소폐쇄는 위생 위반이 아니므로 가장 낮은 단계로
+    id: "002_admin_closure_severity",
+    sql: `
+UPDATE hygiene_actions SET severity = 1
+ WHERE violation ~ '무단\\s*멸실|폐업|소재\\s*불명|시설\\s*멸실|영업\\s*사실\\s*없음';
+`,
+  },
+  {
+    // 이미 문 닫은 가게의 서류 정리(철거·멸실·장기 휴업·폐업) → 0 '폐업 정리'
+    id: "003_admin_closure_level0",
+    sql: `
+UPDATE hygiene_actions SET severity = 0
+ WHERE violation ~ '${ADMIN_CLOSURE_SQL_RE}'
+   AND (coalesce(action_type, '') || ' ' || coalesce(action_detail, '')) ~ '폐쇄|취소';
+UPDATE hygiene_actions SET severity = 1
+ WHERE violation ~ '${ADMIN_CLOSURE_SQL_RE}' AND severity > 1;
 `,
   },
 ];
