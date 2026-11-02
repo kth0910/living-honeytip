@@ -1,0 +1,268 @@
+import { query } from "./db.js";
+import { addDays } from "./lib/util.js";
+
+/* ----------------------------- 공통 ----------------------------- */
+
+export type RunInfo = { job: string; status: string; finished_at: string | null; started_at: string; rows: number; message: string | null };
+
+export async function lastRuns(): Promise<Record<string, { lastOk?: RunInfo; last?: RunInfo }>> {
+  const rows = await query<RunInfo & { kind: string }>(
+    `(SELECT DISTINCT ON (job) 'last' AS kind, job, status, finished_at, started_at, rows, message
+        FROM ingest_runs ORDER BY job, started_at DESC)
+     UNION ALL
+     (SELECT DISTINCT ON (job) 'lastOk' AS kind, job, status, finished_at, started_at, rows, message
+        FROM ingest_runs WHERE status IN ('ok','partial') ORDER BY job, started_at DESC)`,
+  );
+  const out: Record<string, { lastOk?: RunInfo; last?: RunInfo }> = {};
+  for (const r of rows) (out[r.job] ??= {})[r.kind as "last" | "lastOk"] = r;
+  return out;
+}
+
+/* ----------------------------- 위생 ----------------------------- */
+
+export type RegionCount = { sido: string; sigungu: string | null; n: number };
+
+export async function hygieneRegions(): Promise<RegionCount[]> {
+  return query<RegionCount>(
+    `SELECT sido, sigungu, count(DISTINCT biz_key)::int AS n
+       FROM hygiene_actions WHERE sido IS NOT NULL
+      GROUP BY sido, sigungu ORDER BY sido, sigungu NULLS FIRST`,
+  );
+}
+
+export type BizSummary = {
+  biz_key: string;
+  biz_name: string;
+  biz_type: string | null;
+  addr: string | null;
+  actions: number;
+  max_severity: number;
+  last_date: string | null;
+  last_type: string | null;
+  last_violation: string | null;
+};
+
+export type HygieneFilter = {
+  q?: string;
+  sido?: string | null;
+  sigungu?: string | null;
+  minSeverity?: number;
+  sinceDays?: number | null;
+  page?: number;
+  pageSize?: number;
+};
+
+function hygieneWhere(f: HygieneFilter, params: unknown[]): string {
+  const where: string[] = ["TRUE"];
+  const tokens = (f.q ?? "").trim().split(/\s+/).filter(Boolean).slice(0, 5);
+  for (const t of tokens) {
+    params.push(`%${t.replace(/[\\%_]/g, (m) => "\\" + m)}%`);
+    where.push(`(biz_name ILIKE $${params.length} OR addr ILIKE $${params.length})`);
+  }
+  if (f.sido) {
+    params.push(f.sido);
+    where.push(`sido = $${params.length}`);
+  }
+  if (f.sigungu) {
+    params.push(f.sigungu);
+    where.push(`sigungu = $${params.length}`);
+  }
+  if (f.sinceDays) {
+    params.push(f.sinceDays);
+    where.push(`action_date >= current_date - $${params.length}::int`);
+  }
+  return where.join(" AND ");
+}
+
+export async function searchBusinesses(f: HygieneFilter): Promise<{ items: BizSummary[]; total: number }> {
+  const params: unknown[] = [];
+  const where = hygieneWhere(f, params);
+  const pageSize = f.pageSize ?? 20;
+  const offset = ((f.page ?? 1) - 1) * pageSize;
+  const minSev = f.minSeverity ?? 1;
+  params.push(minSev, pageSize, offset);
+  const [ps, pl, po] = [params.length - 2, params.length - 1, params.length];
+  const rows = await query<BizSummary & { total: number }>(
+    `WITH matched AS (SELECT * FROM hygiene_actions WHERE ${where}),
+     biz AS (
+       SELECT biz_key,
+              count(*)::int AS actions,
+              max(severity)::int AS max_severity,
+              max(action_date) AS last_date
+         FROM matched GROUP BY biz_key
+       HAVING max(severity) >= $${ps}
+     ),
+     latest AS (
+       SELECT DISTINCT ON (biz_key) biz_key, biz_name, biz_type, addr, action_type AS last_type, violation AS last_violation
+         FROM matched ORDER BY biz_key, action_date DESC NULLS LAST, severity DESC
+     )
+     SELECT b.*, l.biz_name, l.biz_type, l.addr, l.last_type, l.last_violation, count(*) OVER ()::int AS total
+       FROM biz b JOIN latest l USING (biz_key)
+      ORDER BY b.last_date DESC NULLS LAST, b.max_severity DESC, l.biz_name
+      LIMIT $${pl} OFFSET $${po}`,
+    params,
+  );
+  return { items: rows, total: rows[0]?.total ?? 0 };
+}
+
+export type HygieneStats = { businesses: number; actions: number; severe: number; closed: number; tags: string[] };
+
+export async function hygieneStats(f: HygieneFilter): Promise<HygieneStats & { violations: string[] }> {
+  const params: unknown[] = [];
+  const where = hygieneWhere(f, params);
+  const [s] = await query<{ businesses: number; actions: number; severe: number; closed: number }>(
+    `SELECT count(DISTINCT biz_key)::int AS businesses, count(*)::int AS actions,
+            count(*) FILTER (WHERE severity >= 2)::int AS severe,
+            count(*) FILTER (WHERE severity >= 3)::int AS closed
+       FROM hygiene_actions WHERE ${where}`,
+    params,
+  );
+  const v = await query<{ violation: string }>(
+    `SELECT violation FROM hygiene_actions WHERE ${where} AND violation IS NOT NULL
+      ORDER BY action_date DESC NULLS LAST LIMIT 500`,
+    params,
+  );
+  return { ...(s ?? { businesses: 0, actions: 0, severe: 0, closed: 0 }), tags: [], violations: v.map((r) => r.violation) };
+}
+
+export type ActionRow = {
+  id: number;
+  biz_key: string;
+  biz_name: string;
+  biz_type: string | null;
+  addr: string | null;
+  sido: string | null;
+  sigungu: string | null;
+  action_date: string | null;
+  action_type: string | null;
+  severity: number;
+  violation: string | null;
+  action_detail: string | null;
+  law: string | null;
+};
+
+export async function businessActions(bizKey: string): Promise<ActionRow[]> {
+  return query<ActionRow>(
+    `SELECT id, biz_key, biz_name, biz_type, addr, sido, sigungu, action_date, action_type, severity,
+            violation, action_detail, law
+       FROM hygiene_actions WHERE biz_key = $1
+      ORDER BY action_date DESC NULLS LAST, id DESC`,
+    [bizKey],
+  );
+}
+
+/* ----------------------------- 가격 ----------------------------- */
+
+export type PriceRow = {
+  key: string;
+  category_code: string;
+  category_name: string;
+  item_code: string;
+  item_name: string;
+  kind_code: string;
+  kind_name: string;
+  rank_code: string;
+  rank_name: string;
+  unit: string;
+  price: number;
+  p1w: number | null;
+  p1m: number | null;
+  p1y: number | null;
+  normal: number | null;
+  samples: number;
+  survey_date: string;
+};
+
+export async function priceRegions(date: string): Promise<{ region_code: string; region_name: string; n: number }[]> {
+  return query(
+    `SELECT region_code, region_name, count(*)::int AS n FROM price_daily
+      WHERE survey_date = $1 GROUP BY region_code, region_name
+      ORDER BY (region_code = '0000') DESC, region_name`,
+    [date],
+  );
+}
+
+export async function latestPriceDate(region = "0000"): Promise<string | null> {
+  const [r] = await query<{ d: string | null }>(
+    `SELECT max(survey_date) AS d FROM price_daily WHERE region_code = $1`,
+    [region],
+  );
+  return r?.d ?? null;
+}
+
+/** 같은 품목·품종·단위에서 '상품' 등급을 우선해 한 줄씩, 비교 가격과 함께 */
+export async function priceList(region: string, date: string): Promise<PriceRow[]> {
+  return query<PriceRow>(
+    `WITH cur AS (
+       SELECT DISTINCT ON (item_code, kind_code, unit) *
+         FROM price_daily
+        WHERE region_code = $1 AND survey_date = $2
+        ORDER BY item_code, kind_code, unit, (rank_name LIKE '상품%' OR rank_code = '04') DESC, rank_code
+     )
+     SELECT concat_ws('~', c.item_code, c.kind_code, c.rank_code, c.unit) AS key,
+            c.category_code, c.category_name, c.item_code, c.item_name, c.kind_code, c.kind_name,
+            c.rank_code, c.rank_name, c.unit, c.price, c.samples, c.survey_date,
+            coalesce(c.price_1w, w.price) AS p1w,
+            coalesce(c.price_1m, m.price) AS p1m,
+            coalesce(c.price_1y, y.price) AS p1y,
+            c.price_normal AS normal
+       FROM cur c
+       LEFT JOIN LATERAL (
+         SELECT price FROM price_daily p
+          WHERE p.region_code = c.region_code AND p.item_code = c.item_code AND p.kind_code = c.kind_code
+            AND p.rank_code = c.rank_code AND p.unit = c.unit
+            AND p.survey_date BETWEEN c.survey_date - 10 AND c.survey_date - 4
+          ORDER BY abs((c.survey_date - 7) - p.survey_date) LIMIT 1) w ON true
+       LEFT JOIN LATERAL (
+         SELECT price FROM price_daily p
+          WHERE p.region_code = c.region_code AND p.item_code = c.item_code AND p.kind_code = c.kind_code
+            AND p.rank_code = c.rank_code AND p.unit = c.unit
+            AND p.survey_date BETWEEN c.survey_date - 35 AND c.survey_date - 25
+          ORDER BY abs((c.survey_date - 30) - p.survey_date) LIMIT 1) m ON true
+       LEFT JOIN LATERAL (
+         SELECT price FROM price_daily p
+          WHERE p.region_code = c.region_code AND p.item_code = c.item_code AND p.kind_code = c.kind_code
+            AND p.rank_code = c.rank_code AND p.unit = c.unit
+            AND p.survey_date BETWEEN c.survey_date - 372 AND c.survey_date - 358
+          ORDER BY abs((c.survey_date - 365) - p.survey_date) LIMIT 1) y ON true
+      ORDER BY c.category_code, c.item_name, c.kind_name`,
+    [region, date],
+  );
+}
+
+export type HistoryPoint = { d: string; price: number };
+
+export async function priceHistory(
+  region: string,
+  k: { item_code: string; kind_code: string; rank_code: string; unit: string },
+  since: string,
+): Promise<HistoryPoint[]> {
+  return query<HistoryPoint>(
+    `SELECT survey_date AS d, price FROM price_daily
+      WHERE region_code = $1 AND item_code = $2 AND kind_code = $3 AND rank_code = $4 AND unit = $5
+        AND survey_date >= $6
+      ORDER BY survey_date`,
+    [region, k.item_code, k.kind_code, k.rank_code, k.unit, since],
+  );
+}
+
+export async function priceByRegion(
+  date: string,
+  k: { item_code: string; kind_code: string; rank_code: string; unit: string },
+): Promise<{ region_code: string; region_name: string; price: number }[]> {
+  return query(
+    `SELECT region_code, region_name, price FROM price_daily
+      WHERE survey_date = $1 AND item_code = $2 AND kind_code = $3 AND rank_code = $4 AND unit = $5
+        AND region_code <> '0000'
+      ORDER BY price`,
+    [date, k.item_code, k.kind_code, k.rank_code, k.unit],
+  );
+}
+
+export function weeklyChange(r: Pick<PriceRow, "price" | "p1w">): number | null {
+  return r.p1w ? (r.price - r.p1w) / r.p1w : null;
+}
+
+export function sinceForHistory(date: string): string {
+  return addDays(date, -400);
+}
