@@ -304,6 +304,54 @@ app.post("/admin/ingest/:job", async (c) => {
   return c.json(await runJob(job, "admin", { budgetMs: budget }));
 });
 
+// 데이터 API 서버 접속 진단 (고정된 공개 주소만 확인, 키 사용 안 함)
+app.get("/netcheck", async (c) => {
+  const targets: [string, string][] = [
+    ["foodsafetykorea", "http://openapi.foodsafetykorea.go.kr/api/sample/I2630/json/1/1"],
+    ["datago", "https://apis.data.go.kr/B552845/perDay/price"],
+    ["kamis", "http://www.kamis.or.kr/service/price/xml.do"],
+  ];
+  const out: Record<string, string> = {};
+  await Promise.all(
+    targets.map(async ([name, url]) => {
+      const t = Date.now();
+      try {
+        const res = await fetch(url, { signal: AbortSignal.timeout(15_000) });
+        out[name] = `HTTP ${res.status} (${Date.now() - t}ms)`;
+      } catch (err) {
+        out[name] = `ERROR ${(err as Error).message} (${Date.now() - t}ms)`;
+      }
+    }),
+  );
+  return c.json(out);
+});
+
+// 처음 한 번만: 미리 받아 둔 공공 가격 자료(NDJSON.gz)를 비어 있는 DB에 채운다.
+// 같은 프로젝트의 비공개 'deploy' 버킷에서 발급한 주소만 받는다.
+app.post("/admin/seed-prices", async (c) => {
+  const src = c.req.query("src") ?? "";
+  let u: URL;
+  try {
+    u = new URL(src);
+  } catch {
+    return c.json({ error: "bad src" }, 400);
+  }
+  if (!/\.storage\.[a-z0-9.-]+\.neon\.tech$/.test(u.hostname) || !u.pathname.startsWith("/deploy/seed/")) {
+    return c.json({ error: "src not allowed" }, 403);
+  }
+  const [{ n }] = await query<{ n: number }>(`SELECT count(*)::int AS n FROM price_daily`);
+  if (n > 0) return c.json({ error: "already seeded", rows: n }, 409);
+  const res = await fetch(u, { signal: AbortSignal.timeout(120_000) });
+  if (!res.ok || !res.body) return c.json({ error: `fetch ${res.status}` }, 502);
+  const { gunzipSync } = await import("node:zlib");
+  const text = gunzipSync(Buffer.from(await res.arrayBuffer())).toString("utf8");
+  const { upsertPrices } = await import("./ingest/prices.js");
+  const recs = text.split("\n").filter(Boolean).map((l) => JSON.parse(l));
+  const saved = await upsertPrices(recs);
+  await query(`INSERT INTO ingest_runs (job, trigger, finished_at, status, rows, message) VALUES ('prices','seed',now(),'ok',$1,'초기 자료 적재')`, [saved]);
+  return c.json({ ok: true, rows: saved });
+});
+
 // 원본 응답의 필드 이름 확인용 (키는 노출하지 않음)
 app.get("/admin/probe/hygiene", async (c) => {
   if (!isAdmin(c)) return c.json({ error: "unauthorized" }, 401);
