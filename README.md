@@ -65,6 +65,21 @@ TEST_DATABASE_URL=postgres://... npm test   # E2E (실제 Postgres + 응답 형�
 
 `npm test`는 `TEST_DATABASE_URL` DB의 public 스키마를 지우고 다시 만듭니다. 운영 DB를 넣지 마세요.
 
+## 디자인 시스템과 에셋
+
+화면에 쓰는 로고, 아이콘, 스타일은 모두 `assets/`에 원본 파일로 있습니다.
+
+| 경로 | 내용 |
+|---|---|
+| `assets/brand/logo-mark.svg` | 로고 마크. 지붕이 '살림'의 ㅅ인 집 모양이고, 안의 노란 점은 켜진 불빛이에요. |
+| `assets/brand/favicon.svg` | 브라우저 탭 아이콘 |
+| `assets/icons/*.svg` | 24px 격자, 선 굵기 2의 아이콘 24종 |
+| `assets/design-system.css` | 색, 글자, 카드, 목록, 칩, 버튼, 라벨 같은 공통 스타일 |
+
+`npm run build`가 `scripts/gen-assets.mjs`로 이 파일들을 `src/assets.generated.ts`에 묶습니다. 함수 배포 번들에 함께 들어가고, `/favicon.svg`, `/assets/logo-mark.svg`, `/assets/icons/{이름}.svg`로도 제공됩니다.
+
+글쓰기 규칙: 이모지, 가운뎃점, 대시, 기호 화살표는 쓰지 않습니다. 대신 쉼표, 줄바꿈, 아이콘을 씁니다. `npm test`의 디자인 검사가 렌더링된 페이지에서 이런 문자를 찾아냅니다.
+
 ## 실제 데이터로 확인한 사항
 
 - **aT 가격 API (`apis.data.go.kr/B552845/perDay/price`)**

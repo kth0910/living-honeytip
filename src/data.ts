@@ -49,7 +49,7 @@ export type HygieneFilter = {
   sigungu?: string | null;
   minSeverity?: number;
   sinceDays?: number | null;
-  /** true면 식당·카페(EAT_TYPES)만 */
+  /** true면 식당, 카페(EAT_TYPES)만 */
   eatOnly?: boolean;
   page?: number;
   pageSize?: number;
@@ -117,7 +117,7 @@ export type HygieneStats = {
   actions: number;
   severe: number; // 영업정지 이상을 받은 업소
   recent30: number; // 최근 30일 안에 새로 처분받은 업소
-  closed: number; // 영업취소·폐쇄된 업소
+  closed: number; // 영업취소, 폐쇄된 업소
   adminClosed: number; // 폐업 정리(위생 무관)로만 기록된 업소
 };
 
@@ -158,13 +158,15 @@ export type ActionRow = {
   severity: number;
   violation: string | null;
   action_detail: string | null;
+  period_start: string | null;
+  period_end: string | null;
   law: string | null;
 };
 
 export async function businessActions(bizKey: string): Promise<ActionRow[]> {
   return query<ActionRow>(
     `SELECT id, biz_key, biz_name, biz_type, addr, sido, sigungu, action_date, action_type, severity,
-            violation, action_detail, law
+            violation, action_detail, period_start, period_end, law
        FROM hygiene_actions WHERE biz_key = $1
       ORDER BY action_date DESC NULLS LAST, id DESC`,
     [bizKey],
@@ -203,7 +205,7 @@ export async function priceRegions(date: string): Promise<{ region_code: string;
 }
 
 /**
- * 기준 조사일: 주말·공휴일엔 일부 품목만 조사되므로, 최근 3주 중 가장 많이 조사된 날의
+ * 기준 조사일: 주말, 공휴일엔 일부 품목만 조사되므로, 최근 3주 중 가장 많이 조사된 날의
  * 60% 이상 품목이 있는 가장 최근 날짜를 쓴다.
  */
 export async function latestPriceDate(region = "0000"): Promise<string | null> {
@@ -220,7 +222,7 @@ export async function latestPriceDate(region = "0000"): Promise<string | null> {
   return r?.d ?? null;
 }
 
-/** 같은 품목·품종·단위에서 '상품' 등급을 우선해 한 줄씩, 비교 가격과 함께 */
+/** 같은 품목, 품종, 단위에서 '상품' 등급을 우선해 한 줄씩, 비교 가격과 함께 */
 export async function priceList(region: string, date: string): Promise<PriceRow[]> {
   return query<PriceRow>(
     `WITH cur AS (

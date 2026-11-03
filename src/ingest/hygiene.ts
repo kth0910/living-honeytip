@@ -1,4 +1,4 @@
-// 식품안전나라 Open API — 행정처분결과 (기본 I0470; 식품접객업 전용 I2630도 같은 필드)
+// 식품안전나라 Open API, 행정처분결과 (기본 I0470; 식품접객업 전용 I2630도 같은 필드)
 // 요청: {base}/api/{인증키}/{서비스}/json/{시작}/{끝}[/DSPS_DCSNDT=YYYYMMDD]
 // 응답: { "{서비스}": { "total_count": "n", "row": [...], "RESULT": { "CODE": "INFO-000", "MSG": "..." } } }
 import { query } from "../db.js";
@@ -75,17 +75,9 @@ export function normalizeRow(row: Row) {
   const actionDate = parseDate(pick(row, ["DSPS_DCSNDT", "DSPS_DT", "DSPS_BGNDT"]));
   const actionType = pick(row, ["DSPS_TYPECD_NM", "DSPS_TYPE_NM", "DSPS_TYPECD"]) ?? null;
   const violation = pick(row, ["VILTCN", "VIOL_CN", "VILT_CN"]) ?? null;
-  const detailParts = [
-    pick(row, ["DSPSCN", "DSPS_CN"]),
-    (() => {
-      const b = parseDate(pick(row, ["DSPS_BGNDT"]));
-      const e = parseDate(pick(row, ["DSPS_ENDDT"]));
-      if (!b || !e) return undefined;
-      const days = Math.round((Date.parse(e) - Date.parse(b)) / 86400_000) + 1;
-      const end = b.slice(0, 4) === e.slice(0, 4) ? e.slice(5).replace("-", ".") : e.replaceAll("-", ".");
-      return `${b.replaceAll("-", ".")} ~ ${end}${days > 0 ? ` (${days}일)` : ""}`;
-    })(),
-  ].filter(Boolean);
+  const actionDetail = pick(row, ["DSPSCN", "DSPS_CN"]) ?? null;
+  const periodStart = parseDate(pick(row, ["DSPS_BGNDT"]));
+  const periodEnd = parseDate(pick(row, ["DSPS_ENDDT"]));
   const law = pick(row, ["LAWORD_CD_NM", "LAWORD_NM", "VILT_LAWORD"]) ?? null;
   const licenseNo = pick(row, ["LCNS_NO", "PRMS_NO"]) ?? null;
   const { sido, sigungu } = parseRegion(addr);
@@ -103,9 +95,11 @@ export function normalizeRow(row: Row) {
     sigungu,
     actionDate,
     actionType,
-    severity: severityOf(actionType ?? undefined, detailParts.join(" "), violation ?? undefined),
+    severity: severityOf(actionType ?? undefined, actionDetail ?? undefined, violation ?? undefined),
     violation,
-    actionDetail: detailParts.join(" · ") || null,
+    actionDetail,
+    periodStart,
+    periodEnd,
     law,
     licenseNo,
     raw: row,
@@ -125,16 +119,18 @@ export async function upsertRows(rows: Row[]): Promise<number> {
          SELECT * FROM jsonb_to_recordset($1::jsonb) AS x(
            "sourceKey" text, "bizKey" text, "bizName" text, "bizType" text, addr text,
            sido text, sigungu text, "actionDate" date, "actionType" text, severity smallint,
-           violation text, "actionDetail" text, law text, "licenseNo" text, raw jsonb)
+           violation text, "actionDetail" text, "periodStart" date, "periodEnd" date,
+           law text, "licenseNo" text, raw jsonb)
        ), ins AS (
          INSERT INTO hygiene_actions
            (source_key, biz_key, biz_name, biz_type, addr, sido, sigungu, action_date, action_type,
-            severity, violation, action_detail, law, license_no, raw)
+            severity, violation, action_detail, period_start, period_end, law, license_no, raw)
          SELECT "sourceKey", "bizKey", "bizName", "bizType", addr, sido, sigungu, "actionDate", "actionType",
-                severity, violation, "actionDetail", law, "licenseNo", raw FROM input
+                severity, violation, "actionDetail", "periodStart", "periodEnd", law, "licenseNo", raw FROM input
          ON CONFLICT (source_key) DO UPDATE SET
            severity = EXCLUDED.severity, biz_type = EXCLUDED.biz_type, sido = EXCLUDED.sido,
            sigungu = EXCLUDED.sigungu, action_detail = EXCLUDED.action_detail, law = EXCLUDED.law,
+           period_start = EXCLUDED.period_start, period_end = EXCLUDED.period_end,
            raw = EXCLUDED.raw, fetched_at = now()
          RETURNING (xmax = 0) AS is_new
        )
@@ -151,8 +147,8 @@ type BackfillState = { next?: number; total?: number; completedAt?: string; star
 /**
  * 서비스마다
  * 1) 최근 며칠치 처분을 날짜 필터로 먼저 가져오고
- * 2) 남은 시간 동안 전체 목록을 1000건씩 이어서 훑는다(중단 지점 저장 → 다음 실행에서 계속).
- *    한 바퀴를 다 돌면 7일 뒤 다시 처음부터 돈다(수정·삭제 반영).
+ * 2) 남은 시간 동안 전체 목록을 1000건씩 이어서 훑는다(중단 지점 저장 에서 다음 실행에서 계속).
+ *    한 바퀴를 다 돌면 7일 뒤 다시 처음부터 돈다(수정, 삭제 반영).
  * 활용신청이 안 된 서비스(INFO-110)는 건너뛰고, 모든 서비스가 안 될 때만 실패로 본다.
  */
 export async function ingestHygiene(opts: { budgetMs?: number; recentDays?: number } = {}) {
@@ -181,7 +177,7 @@ export async function ingestHygiene(opts: { budgetMs?: number; recentDays?: numb
     }
   }
   if (!usable && lastFatal) throw lastFatal;
-  return { rows: inserted, fetched, message: log.join(" · ") || "ok", partial };
+  return { rows: inserted, fetched, message: log.join(", ") || "ok", partial };
 }
 
 async function ingestService(svc: string, deadline: number, recentDays: number) {
@@ -199,7 +195,7 @@ async function ingestService(svc: string, deadline: number, recentDays: number) 
       fetched += rows.length;
       if (rows.length && rows.every((r) => compact(normalizeRow(r).actionDate ?? "") !== day)) {
         filterWorks = false;
-        log.push("날짜 필터 미지원 — 전체 순회로만 수집");
+        log.push("날짜 필터 미지원, 전체 순회로만 수집");
       }
       inserted += await upsertRows(rows);
     } catch (err) {

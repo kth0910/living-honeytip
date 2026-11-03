@@ -1,5 +1,5 @@
 // 소매 가격 수집
-//  A) 공공데이터포털 — 한국농수산식품유통공사_일별 도·소매 가격정보 조회 (DATAKR_API_KEY)
+//  A) 공공데이터포털, 한국농수산식품유통공사_일별 도소매 가격정보 조회 (DATAKR_API_KEY)
 //     GET https://apis.data.go.kr/B552845/perDay/price
 //         ?serviceKey=&pageNo=&numOfRows=&returnType=JSON&cond[exmn_ymd::EQ]=YYYYMMDD&cond[se_cd::EQ]=01(소매)
 //  B) (선택) KAMIS 직접 키가 있으면 dailyPriceByCategoryList 로 평년 가격까지 수집
@@ -146,7 +146,7 @@ function unitLabel(row: Row): string {
   return `${size.replace(/\.0+$/, "")}${unit}`; // "10" + "kg(그물망 3포기)" -> "10kg(그물망 3포기)"
 }
 
-/** 지역·시장별 원자료를 전국 평균 + 시군구 평균으로 묶는다 */
+/** 지역, 시장별 원자료를 전국 평균 + 시군구 평균으로 묶는다 */
 export function aggregatePerDay(date: string, rows: Row[]): PriceRecord[] {
   type Acc = Omit<PriceRecord, "price" | "samples"> & { sum: number; n: number };
   const groups = new Map<string, Acc>();
@@ -386,12 +386,12 @@ async function ingestDataGo(deadline: number) {
   if (errors.length === items.length) throw new PriceApiError("ALL_FAILED", errors[0] ?? "모든 품목 실패");
   const [latest] = await query<{ d: string | null }>(`SELECT max(survey_date) AS d FROM price_daily WHERE region_code = '0000'`);
   log.push(`최근 조사일 ${latest?.d ?? "-"}`);
-  return { rows: saved, message: log.join(" · "), partial: !done || errors.length > 0 };
+  return { rows: saved, message: log.join(", "), partial: !done || errors.length > 0 };
 }
 
 /**
  * KAMIS(선택): 최근 조사일을 찾아 저장하고, 1~8주 전과 1년 전 같은 시기도 채운다.
- * (주말·공휴일은 조사가 없어서 앞쪽 날짜로 최대 며칠씩 물러나며 찾는다)
+ * (주말, 공휴일은 조사가 없어서 앞쪽 날짜로 최대 며칠씩 물러나며 찾는다)
  */
 async function ingestKamis(deadline: number) {
   const log: string[] = ["provider=kamis"];
@@ -430,7 +430,7 @@ async function ingestKamis(deadline: number) {
       }
     }
   }
-  return { rows: saved, message: log.join(" · "), partial };
+  return { rows: saved, message: log.join(", "), partial };
 }
 
 export async function ingestPrices(opts: { budgetMs?: number } = {}) {

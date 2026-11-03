@@ -1,10 +1,23 @@
 import type { Child } from "hono/jsx";
-import { CSS } from "./styles.js";
+import { DESIGN_SYSTEM_CSS } from "../assets.generated.js";
 import { CLIENT_JS } from "./client.js";
 import { agoTime } from "./format.js";
+import { Icon, type IconName } from "./ui.js";
 import type { RunInfo } from "../data.js";
 
+export { Empty } from "./ui.js";
+
 export type Tab = "home" | "hygiene" | "prices" | "about";
+
+const TABS: { tab: Tab; href: string; label: string; icon: IconName }[] = [
+  { tab: "home", href: "/", label: "홈", icon: "home" },
+  { tab: "hygiene", href: "/hygiene", label: "식당 위생", icon: "bowl" },
+  { tab: "prices", href: "/prices", label: "장보기 시세", icon: "basket" },
+];
+
+// Pretendard (SIL OFL) 웹폰트. 실패해도 시스템 글꼴로 보인다.
+const FONT_CSS =
+  "https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css";
 
 export function Layout(props: {
   title: string;
@@ -13,9 +26,9 @@ export function Layout(props: {
   runs?: Record<string, { lastOk?: RunInfo; last?: RunInfo }>;
   children: Child;
 }) {
-  const fullTitle = props.tab === "home" ? "동네살림 · 식당 위생 체크와 장보기 시세" : `${props.title} · 동네살림`;
+  const fullTitle = props.tab === "home" ? "동네살림" : `${props.title} | 동네살림`;
   const desc =
-    props.description ?? "우리 동네 식당의 위생 위반 기록과 이번 주 농축수산물 소매가격을 한곳에서 쉽게 확인하세요.";
+    props.description ?? "우리 동네 식당의 위생 위반 기록과 이번 주 장보기 물가를 한곳에서 쉽게 확인하세요.";
   return (
     <html lang="ko">
       <head>
@@ -25,28 +38,29 @@ export function Layout(props: {
         <meta name="description" content={desc} />
         <meta property="og:title" content={fullTitle} />
         <meta property="og:description" content={desc} />
-        <meta name="theme-color" content="#0d6e63" />
-        <link
-          rel="icon"
-          href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%230d6e63'/%3E%3Ctext x='16' y='22' font-size='17' text-anchor='middle' fill='white' font-family='sans-serif' font-weight='700'%3E살%3C/text%3E%3C/svg%3E"
-        />
-        <style dangerouslySetInnerHTML={{ __html: CSS }} />
+        <meta name="theme-color" content="#f2f4f6" media="(prefers-color-scheme: light)" />
+        <meta name="theme-color" content="#101214" media="(prefers-color-scheme: dark)" />
+        <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+        <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin="" />
+        <link rel="stylesheet" href={FONT_CSS} />
+        <style dangerouslySetInnerHTML={{ __html: DESIGN_SYSTEM_CSS }} />
       </head>
       <body>
-        <a class="skip" href="#main">본문으로 건너뛰기</a>
-        <header class="top">
+        <a class="skip" href="#main">
+          본문으로 건너뛰기
+        </a>
+        <header class="appbar">
           <div class="wrap">
             <a class="brand" href="/" aria-label="동네살림 홈">
-              <span class="logo" aria-hidden="true">살</span>
-              <span class="name">동네살림</span>
+              <img src="/assets/logo-mark.svg" alt="" width="28" height="28" />
+              <span>동네살림</span>
             </a>
-            <nav class="tabs" aria-label="주요 메뉴">
-              <a href="/hygiene" aria-current={props.tab === "hygiene" ? "page" : undefined}>
-                식당 위생
-              </a>
-              <a href="/prices" aria-current={props.tab === "prices" ? "page" : undefined}>
-                장보기 시세
-              </a>
+            <nav class="topnav" aria-label="주요 메뉴">
+              {TABS.map((t) => (
+                <a href={t.href} aria-current={props.tab === t.tab ? "page" : undefined}>
+                  {t.label}
+                </a>
+              ))}
             </nav>
           </div>
         </header>
@@ -56,45 +70,34 @@ export function Layout(props: {
         <footer>
           <div class="wrap stack">
             <p>
-              자료: 식품의약품안전처 식품안전나라 「행정처분결과」, 한국농수산식품유통공사(aT) 「일별
-              도·소매 가격정보」. 공공데이터를 가공해 보여주며, 원본과 차이가 있을 수 있어요.
+              식품의약품안전처 식품안전나라의 행정처분 결과와 한국농수산식품유통공사(aT)의 일별 도소매 가격정보를
+              쉽게 볼 수 있게 정리했어요. 원본과 차이가 있을 수 있어요.
             </p>
-            {props.runs && (
-              <p class="faint">
-                {props.runs.hygiene?.lastOk?.finished_at && (
-                  <span>위생 정보 갱신 {agoTime(props.runs.hygiene.lastOk.finished_at)} · </span>
-                )}
-                {props.runs.prices?.lastOk?.finished_at && (
-                  <span>가격 정보 갱신 {agoTime(props.runs.prices.lastOk.finished_at)} · </span>
-                )}
-                <a href="/about">이 서비스에 대해</a>
-              </p>
-            )}
+            <p>
+              {props.runs?.hygiene?.lastOk?.finished_at && (
+                <>위생 정보는 {agoTime(props.runs.hygiene.lastOk.finished_at)}, </>
+              )}
+              {props.runs?.prices?.lastOk?.finished_at && (
+                <>가격 정보는 {agoTime(props.runs.prices.lastOk.finished_at)} 새로 받았어요. </>
+              )}
+              <a href="/about">서비스 안내</a>
+            </p>
           </div>
         </footer>
+        <nav class="tabbar" aria-label="하단 메뉴">
+          <ul>
+            {TABS.map((t) => (
+              <li>
+                <a href={t.href} aria-current={props.tab === t.tab ? "page" : undefined}>
+                  <Icon name={t.icon} />
+                  {t.label}
+                </a>
+              </li>
+            ))}
+          </ul>
+        </nav>
         <script dangerouslySetInnerHTML={{ __html: CLIENT_JS }} />
       </body>
     </html>
-  );
-}
-
-export function SearchIcon() {
-  return (
-    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true">
-      <circle cx="11" cy="11" r="7" />
-      <path d="m20 20-3.5-3.5" stroke-linecap="round" />
-    </svg>
-  );
-}
-
-export function Empty(props: { icon: string; title: string; children?: Child }) {
-  return (
-    <div class="card empty">
-      <div class="big" aria-hidden="true">
-        {props.icon}
-      </div>
-      <h3 style="margin:8px 0 6px">{props.title}</h3>
-      <div class="muted small">{props.children}</div>
-    </div>
   );
 }

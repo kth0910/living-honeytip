@@ -6,11 +6,11 @@ export const CLIENT_JS = /* js */ `
     el.addEventListener('change', function () { el.form && el.form.submit(); });
   });
 
-  // 가격 목록: 부류 · 검색어 · 정렬
+  // 가격 목록: 종류, 검색어, 정렬
   var list = document.getElementById('plist');
   if (!list) return;
   var rows = Array.prototype.slice.call(list.querySelectorAll('li[data-cat]'));
-  var heads = Array.prototype.slice.call(list.querySelectorAll('li.cat-head'));
+  var heads = Array.prototype.slice.call(list.querySelectorAll('li.row-head'));
   var original = Array.prototype.slice.call(list.children);
   var chips = Array.prototype.slice.call(document.querySelectorAll('[data-cat-chip]'));
   var q = document.getElementById('pq');
@@ -46,7 +46,7 @@ export const CLIENT_JS = /* js */ `
       var hasRow = state.sort === 'cat' && rows.some(function (li) { return li.dataset.cat === h.dataset.head && !li.classList.contains('hidden'); });
       h.classList.toggle('hidden', !hasRow);
     });
-    if (count) count.textContent = shown + '개 품목';
+    if (count) count.textContent = shown + '개';
     if (empty) empty.classList.toggle('hidden', shown > 0);
     try {
       var u = new URL(location.href);

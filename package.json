@@ -18,11 +18,12 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "tsc -p . && node scripts/bundle.mjs",
+    "build": "node scripts/gen-assets.mjs && tsc -p . && node scripts/bundle.mjs",
     "start": "tsx src/server.ts",
     "dev": "tsx watch src/server.ts",
     "db:migrate": "tsx scripts/migrate.ts",
     "ingest": "tsx scripts/ingest.ts",
-    "test": "tsx test/e2e.ts"
+    "test": "tsx test/e2e.ts",
+    "assets": "node scripts/gen-assets.mjs"
   }
 }

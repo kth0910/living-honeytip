@@ -134,19 +134,19 @@ await step("hygiene search, filters, region cookie, detail page", async () => {
   assert.match(d.text, /처분 기록/);
   assert.match(d.text, /이물/);
   const none = await get("/hygiene?q=" + encodeURIComponent("존재하지않는가게"));
-  assert.match(none.text, /위반 기록이 없어요/);
+  assert.match(none.text, /처분 기록이 없어요/);
   const r = await get("/hygiene?r=" + encodeURIComponent("서울 강남구"));
-  assert.match(r.text, /서울 강남구 · 최근 1년 요약/);
+  assert.match(r.text, /서울 강남구 최근 1년 요약/);
   assert.match(r.headers.get("set-cookie") ?? "", /region=/);
   const severe = await get("/hygiene?sev=3&p=all");
   assert.equal(severe.status, 200);
-  const cards = severe.text.split('<a class="biz"').slice(1).map((c) => c.split("</a>")[0]);
+  const cards = severe.text.split('<a class="row" href="/hygiene/b/').slice(1).map((c) => c.split("</a>")[0]);
   assert.ok(cards.length > 0, "expected severe results");
-  assert.ok(cards.every((c) => c.includes("badge sev3")), "severity filter should only list 영업취소·폐쇄 businesses");
+  assert.ok(cards.every((c) => c.includes("label sev3")), "severity filter should only list 영업취소 businesses");
   // 무단멸실(폐업 미신고)은 위생 위반이 아니므로 가장 낮은 단계 + 설명 태그
   const closed = await get("/hygiene?p=all&q=" + encodeURIComponent("예시폐업식당"));
-  assert.match(closed.text, /폐업 정리\(위생 무관\)/);
-  assert.match(closed.text, /badge sev0/);
+  assert.match(closed.text, /label sev0/);
+  assert.match(closed.text, /폐업 정리/);
   // 둘러보기 목록·요약에서는 빠지고, 빠졌다는 안내가 나온다
   const mapo = await get("/hygiene?p=all&r=" + encodeURIComponent("서울 마포구"));
   assert.ok(!mapo.text.includes("예시폐업식당"), "admin closure hidden when browsing");
@@ -173,7 +173,7 @@ await step("prices page: weekly comparison, picks, item detail, regions", async 
   const key = decodeURIComponent(p.text.match(/\/prices\/item\?k=([^"&]+)/)![1]);
   const item = await get(`/prices/item?k=${encodeURIComponent(key)}`);
   assert.equal(item.status, 200);
-  assert.match(item.text, /최근 가격 흐름/);
+  assert.match(item.text, /최근 12주 가격/);
   assert.match(item.text, /<svg class="chart"/);
   assert.match(item.text, /지역별 가격/);
   const seoul = await get("/prices?r=1101");
@@ -205,6 +205,28 @@ await step("cron route requires a trigger delivery; admin route requires token",
   assert.ok(JSON.parse(probe.text).keys.includes("PRCSCITYPOINT_BSSHNM"));
   const wrongSvc = await get("/admin/probe/hygiene?svc=I2630", { headers: { authorization: "Bearer test-admin-token" } });
   assert.match(wrongSvc.text, /INFO-110/);
+});
+
+await step("design: no emoji, middle dot, dash or arrow glyphs in rendered pages; assets served", async () => {
+  const BAD = /[·—–←→↗↘▲▼★☆✓✔•…]|[\u{1F000}-\u{1FAFF}]|[\u2600-\u27BF]|\uFE0F/u;
+  const pages = ["/", "/hygiene", "/hygiene?q=" + encodeURIComponent("김밥"), "/prices", "/about", "/nope"];
+  const s0 = await get("/prices");
+  pages.push(decodeURIComponent(s0.text.match(/\/prices\/item\?k=[^"]+/)![0]).replace(/&amp;/g, "&"));
+  const h0 = await get("/hygiene?q=" + encodeURIComponent("가나다김밥"));
+  pages.push(h0.text.match(/\/hygiene\/b\/[0-9a-f]{16}/)![0]);
+  for (const path of pages) {
+    const html = (await get(path)).text.replace(/<script[\s\S]*?<\/script>|<style[\s\S]*?<\/style>/g, "");
+    const m = html.match(BAD);
+    assert.ok(!m, `${path} contains '${m?.[0]}' near: ${m ? html.slice(Math.max(0, m.index! - 40), m.index! + 20) : ""}`);
+  }
+  const fav = await get("/favicon.svg");
+  assert.equal(fav.status, 200);
+  assert.match(fav.headers.get("content-type") ?? "", /image\/svg\+xml/);
+  const icon = await get("/assets/icons/search.svg");
+  assert.equal(icon.status, 200);
+  assert.match(icon.text, /<svg/);
+  const logo = await get("/assets/logo-mark.svg");
+  assert.equal(logo.status, 200);
 });
 
 await step("healthz + about reflect ingest runs", async () => {

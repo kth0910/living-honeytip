@@ -21,6 +21,7 @@ import { runJob, type Job } from "./ingest/run.js";
 import { splitRegionParam } from "./lib/region.js";
 import { violationTags } from "./lib/severity.js";
 import { Layout, Empty } from "./views/layout.js";
+import { FAVICON_SVG, ICONS, LOGO_MARK_SVG } from "./assets.generated.js";
 import { HygienePage, BusinessPage, type HygieneQuery } from "./views/hygiene.js";
 import { PricesPage, PriceItemPage } from "./views/prices.js";
 import { HomePage, AboutPage } from "./views/home.js";
@@ -31,14 +32,16 @@ const app = new Hono();
 const YEAR = 365 * 86400;
 
 app.use("*", async (c, next) => {
+  // 정적 에셋은 DB가 필요 없다
+  if (c.req.path.startsWith("/assets/") || c.req.path.startsWith("/favicon")) return next();
   try {
     await ensureSchema();
   } catch (err) {
     console.error("[schema]", redact(String(err)));
     return c.html(
       <Layout title="잠시 문제가 생겼어요" tab="home">
-        <Empty icon="🛠️" title="잠시 문제가 생겼어요">
-          데이터베이스에 연결하지 못했어요. 잠시 후 다시 시도해 주세요.
+        <Empty icon="tool" title="잠시 문제가 생겼어요">
+          <p>데이터베이스에 연결하지 못했어요. 잠시 후 다시 시도해 주세요.</p>
         </Empty>
       </Layout>,
       503,
@@ -54,8 +57,10 @@ app.onError((err, c) => {
   console.error("[error]", redact(err?.stack ?? String(err)));
   return c.html(
     <Layout title="문제가 생겼어요" tab="home">
-      <Empty icon="😵" title="페이지를 보여드리지 못했어요">
-        일시적인 문제일 수 있어요. <a href={c.req.path}>다시 시도</a>하거나 <a href="/">처음으로</a> 돌아가 주세요.
+      <Empty icon="refresh" title="페이지를 보여드리지 못했어요">
+        <p>
+          일시적인 문제일 수 있어요. <a href={c.req.path}>다시 시도</a>하거나 <a href="/">처음으로</a> 돌아가 주세요.
+        </p>
       </Empty>
     </Layout>,
     500,
@@ -65,8 +70,10 @@ app.onError((err, c) => {
 app.notFound((c) =>
   c.html(
     <Layout title="페이지를 찾을 수 없어요" tab="home">
-      <Empty icon="🧭" title="페이지를 찾을 수 없어요">
-        주소가 바뀌었거나 없는 페이지예요. <a href="/">처음으로</a> 돌아가 주세요.
+      <Empty icon="compass" title="페이지를 찾을 수 없어요">
+        <p>
+          주소가 바뀌었거나 없는 페이지예요. <a href="/">처음으로</a> 돌아가 주세요.
+        </p>
       </Empty>
     </Layout>,
     404,
@@ -139,7 +146,7 @@ app.get("/hygiene", async (c) => {
   const pParam = c.req.query("p");
   const period = pParam === "1y" || pParam === "3y" || pParam === "all" ? pParam : q ? "all" : "1y";
   const page = Math.min(500, Math.max(1, Number(c.req.query("page")) || 1));
-  // 가게 이름으로 찾을 땐 모든 업소, 동네 둘러보기는 식당·카페만이 기본
+  // 가게 이름으로 찾을 땐 모든 업소, 동네 둘러보기는 식당과 카페만이 기본
   const kParam = c.req.query("k");
   const scope = kParam === "eat" || kParam === "all" ? kParam : q ? "all" : "eat";
   const hq: HygieneQuery = { q, region, sev, period, scope, page };
@@ -164,7 +171,7 @@ app.get("/hygiene", async (c) => {
   return c.html(
     <Layout
       title={q ? `‘${q}’ 위생 기록` : "식당 위생 체크"}
-      description="식당·카페의 위생 위반(행정처분) 기록을 가게 이름이나 동네로 찾아보세요."
+      description="식당과 카페의 위생 위반 기록(행정처분)을 가게 이름이나 동네로 찾아보세요."
       tab="hygiene"
       runs={runs}
     >
@@ -219,7 +226,7 @@ app.get("/prices", async (c) => {
   return c.html(
     <Layout
       title="이번 주 장보기 시세"
-      description="채소·과일·고기·생선 소매가격을 지난주와 비교해 보여드려요."
+      description="채소, 과일, 고기, 생선 소매가격을 지난주와 비교해 보여드려요."
       tab="prices"
       runs={runs}
     >
@@ -260,7 +267,7 @@ app.get("/prices/item", async (c) => {
   ]);
   const regionName = regions.find((g) => g.region_code === region)?.region_name ?? "전국";
   return c.html(
-    <Layout title={`${r.item_name} 가격`} description={`${r.item_name} 이번 주 소매가격과 지난주 대비 변동`} tab="prices" runs={runs}>
+    <Layout title={`${r.item_name} 가격`} description={`${r.item_name}의 이번 주 소매가격과 지난주보다 얼마나 올랐는지 알려드려요.`} tab="prices" runs={runs}>
       <PriceItemPage r={r} history={history} regionName={regionName} regionCode={region} byRegion={byRegion} />
     </Layout>,
   );
@@ -269,10 +276,25 @@ app.get("/prices/item", async (c) => {
 app.get("/about", async (c) => {
   const runs = await lastRuns();
   return c.html(
-    <Layout title="이 서비스에 대해" tab="about" runs={runs}>
+    <Layout title="서비스 안내" tab="about" runs={runs}>
       <AboutPage runs={runs} />
     </Layout>,
   );
+});
+
+// 디자인 에셋 (assets/ 에서 생성)
+const svgHeaders = { "Content-Type": "image/svg+xml; charset=utf-8", "Cache-Control": "public, max-age=86400" };
+app.get("/favicon.svg", (c) => c.body(FAVICON_SVG, 200, svgHeaders));
+app.get("/favicon.ico", (c) => c.redirect("/favicon.svg", 301));
+app.get("/assets/logo-mark.svg", (c) => c.body(LOGO_MARK_SVG, 200, svgHeaders));
+app.get("/assets/icons/:name{[a-z-]+\\.svg}", (c) => {
+  const name = c.req.param("name").replace(/\.svg$/, "");
+  const icon = ICONS[name];
+  if (!icon) return c.notFound();
+  const attrs = icon.filled
+    ? 'fill="currentColor"'
+    : 'fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"';
+  return c.body(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" ${attrs}>${icon.body}</svg>`, 200, svgHeaders);
 });
 
 app.get("/healthz", async (c) => {
@@ -288,14 +310,14 @@ app.get("/healthz", async (c) => {
 
 const JOBS: Job[] = ["hygiene", "prices"];
 
-// Neon Function Trigger (cron) → POST /cron/:job. 헤더/본문 검증은 parseTriggerDelivery가 한다.
+// Neon Function Trigger(cron)가 POST /cron/:job 을 부른다. 헤더와 본문 검증은 parseTriggerDelivery가 한다.
 app.post("/cron/:job", async (c) => {
   const job = c.req.param("job") as Job;
   if (!JOBS.includes(job)) return c.json({ error: "unknown job" }, 404);
   const parsed = await parseTriggerDelivery(c.req.raw);
   if (!parsed.ok) return c.json({ error: parsed.error }, 401);
   const result = await runJob(job, `trigger:${parsed.invocation.trigger.name}`);
-  // 키 없음·인증 오류는 다시 시도해도 같으므로 200으로 끝내 재시도를 막는다(실패는 ingest_runs에 기록됨)
+  // 키 없음, 인증 오류는 다시 시도해도 같으므로 200으로 끝내 재시도를 막는다(실패는 ingest_runs에 기록됨)
   const permanent = /^(NO_KEY|AUTH|INFO-100|INFO-110|API-(20|22|30|31|32|33))\b/.test(result.message ?? "");
   return c.json(result, result.status === "error" && !permanent ? 502 : 200);
 });

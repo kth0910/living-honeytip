@@ -110,4 +110,15 @@ UPDATE hygiene_actions SET severity = 0
    AND severity <> 0;
 `,
   },
+  {
+    // 처분 기간을 문장 대신 날짜로 저장 (화면에서 "11월 1일부터 7일까지"처럼 쓰기 위해)
+    id: "005_action_period_dates",
+    sql: `
+ALTER TABLE hygiene_actions ADD COLUMN period_start date, ADD COLUMN period_end date;
+UPDATE hygiene_actions SET
+  period_start = CASE WHEN raw->>'DSPS_BGNDT' ~ '^[0-9]{8}$' THEN to_date(raw->>'DSPS_BGNDT', 'YYYYMMDD') END,
+  period_end   = CASE WHEN raw->>'DSPS_ENDDT' ~ '^[0-9]{8}$' THEN to_date(raw->>'DSPS_ENDDT', 'YYYYMMDD') END,
+  action_detail = nullif(btrim(coalesce(raw->>'DSPSCN', raw->>'DSPS_CN', '')), '');
+`,
+  },
 ];

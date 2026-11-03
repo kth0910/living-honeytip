@@ -1,4 +1,4 @@
-// 주소 문자열에서 시·도 / 시·군·구를 뽑아 표준 이름으로 맞춘다.
+// 주소 문자열에서 시도와 시군구를 뽑아 표준 이름으로 맞춘다.
 
 const SIDO: [RegExp, string][] = [
   [/^서울/, "서울"],
@@ -37,7 +37,7 @@ export function parseRegion(addr: string | undefined | null): { sido: string | n
   const t1 = tokens[1];
   if (!t1 || !/(시|군|구)$/.test(t1)) return { sido, sigungu: null };
   const t2 = tokens[2];
-  // 일반구가 있는 시: "성남시 분당구" → "성남시 분당구"
+  // 일반구가 있는 시: "성남시 분당구" 에서 "성남시 분당구"
   if (/시$/.test(t1) && t2 && /구$/.test(t2)) return { sido, sigungu: `${t1} ${t2}` };
   return { sido, sigungu: t1 };
 }
