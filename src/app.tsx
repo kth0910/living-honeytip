@@ -200,7 +200,7 @@ app.get("/hygiene/b/:key", async (c) => {
   return c.html(
     <Layout
       title={`${tidy(actions[0].biz_name)} 위생 기록`}
-      description={`${actions[0].biz_name}의 행정처분 기록 ${actions.length}건`}
+      description={`${tidy(actions[0].biz_name)}의 행정처분 기록 ${actions.length}건`}
       tab="hygiene"
       runs={runs}
     >
@@ -268,7 +268,7 @@ app.get("/prices/item", async (c) => {
   ]);
   const regionName = regions.find((g) => g.region_code === region)?.region_name ?? "전국";
   return c.html(
-    <Layout title={`${r.item_name} 가격`} description={`${r.item_name}의 이번 주 소매가격과 지난주보다 얼마나 올랐는지 알려드려요.`} tab="prices" runs={runs}>
+    <Layout title={`${tidy(r.item_name)} 가격`} description={`${tidy(r.item_name)}의 이번 주 소매가격과 지난주보다 얼마나 올랐는지 알려드려요.`} tab="prices" runs={runs}>
       <PriceItemPage r={r} history={history} regionName={regionName} regionCode={region} byRegion={byRegion} />
     </Layout>,
   );

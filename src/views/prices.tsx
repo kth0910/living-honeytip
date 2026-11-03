@@ -223,7 +223,7 @@ export function PricesPage(props: {
                     {catShort(r.category_code, r.category_name)}
                   </li>
                 )}
-                <li data-cat={r.category_code} data-name={`${itemTitle(r)} ${r.item_name} ${r.kind_name}`} data-ch={ch ?? ""}>
+                <li data-cat={r.category_code} data-name={`${itemTitle(r)} ${tidy(r.item_name)} ${tidy(r.kind_name)}`} data-ch={ch ?? ""}>
                   <a class="row" href={itemHref(r, props.region)}>
                     <div class="main">
                       <div class="title">{itemTitle(r)}</div>
