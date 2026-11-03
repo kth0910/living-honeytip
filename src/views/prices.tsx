@@ -1,6 +1,6 @@
 import type { HistoryPoint, PriceRow } from "../data.js";
 import { weeklyChange } from "../data.js";
-import { itemSub, itemTitle, josa, koDate, kindName, pct, rankLabel, shortDate, trendOf, won, type Trend } from "./format.js";
+import { itemSub, itemTitle, josa, koDate, kindName, pct, rankLabel, shortDate, tidy, trendOf, won, type Trend } from "./format.js";
 import { Empty, Icon, SectionHead, Select } from "./ui.js";
 
 const CAT_ORDER = ["200", "400", "500", "600", "100", "300"];
@@ -58,7 +58,7 @@ function MiniCard(props: { r: PriceRow; region: string }) {
   return (
     <a class="mini" href={itemHref(r, props.region)}>
       <span class="name">{itemTitle(r)}</span>
-      <span class="unit">{r.unit}</span>
+      <span class="unit">{tidy(r.unit)}</span>
       <span class="price num">{won(r.price)}</span>
       <span style="margin-top:4px">
         <Move r={weeklyChange(r)} basis="지난주" />
@@ -355,7 +355,7 @@ export function PriceItemPage(props: {
           ? "지난주와 비슷한 가격이에요."
           : "지난주 가격 자료가 아직 없어요.";
   const back = props.regionCode !== "0000" ? `/prices?r=${props.regionCode}` : "/prices";
-  const facts = [kindName(r), r.unit, rankLabel(r)].filter(Boolean).join(", ");
+  const facts = [kindName(r), r.unit, rankLabel(r)].map(tidy).filter(Boolean).join(", ");
   return (
     <>
       <a class="small t3" href={back} style="display:inline-flex;align-items:center;gap:2px;margin-top:8px">
@@ -367,7 +367,7 @@ export function PriceItemPage(props: {
           {catShort(r.category_code, r.category_name)}
         </div>
         <h1 class="page-title" style="margin:2px 0 4px">
-          {r.item_name}
+          {tidy(r.item_name)}
         </h1>
         {facts && <p class="t2">{facts}</p>}
         <div class="big num" style="margin-top:16px">

@@ -97,9 +97,10 @@ export function kindName(r: { item_name: string; kind_name: string }): string {
 
 /** 목록 제목: "배추", 품종이 있으면 "배추 가을" */
 export function itemTitle(r: { item_name: string; kind_name: string }): string {
-  const k = kindName(r);
-  if (!k) return r.item_name;
-  return k.includes(r.item_name) ? k : `${r.item_name} ${k}`;
+  const k = tidy(kindName(r));
+  const name = tidy(r.item_name);
+  if (!k) return name;
+  return k.includes(name) ? k : `${name} ${k}`;
 }
 
 /** 등급 표시: 의미 없는 값("-")이나 품종과 같은 값은 숨긴다 */
@@ -111,7 +112,7 @@ export function rankLabel(r: { rank_name: string; kind_name: string }): string {
 
 /** 목록 보조 줄: "1포기, 상품" */
 export function itemSub(r: { unit: string; rank_name: string; kind_name: string }): string {
-  return [r.unit, rankLabel(r)].filter(Boolean).join(", ");
+  return [tidy(r.unit), tidy(rankLabel(r))].filter(Boolean).join(", ");
 }
 
 /** 받침 유무에 따라 조사 고르기: josa("대파", "이", "가") -> "대파가" */
@@ -127,4 +128,15 @@ export function splitViolation(v: string): { date: string | null; text: string }
   const m = v.match(/^\s*\(?(\d{4})[.\-]?(\d{2})[.\-]?(\d{2})\)?\s*/);
   if (!m) return { date: null, text: v };
   return { date: `${m[1]}-${m[2]}-${m[3]}`, text: v.slice(m[0].length) || v };
+}
+
+/** 공공데이터 원문을 화면 규칙에 맞게 다듬는다: 가운뎃점과 대시는 쉼표로 */
+export function tidy(text: string | null | undefined): string {
+  if (!text) return "";
+  return text
+    .replace(/\s*[·ㆍ‧∙•]\s*/g, ", ")
+    .replace(/\s*[—–]\s*/g, ", ")
+    .replace(/\s+-\s+/g, ", ")
+    .replace(/,\s*,/g, ",")
+    .trim();
 }

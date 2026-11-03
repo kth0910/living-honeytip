@@ -27,6 +27,7 @@ import { PricesPage, PriceItemPage } from "./views/prices.js";
 import { HomePage, AboutPage } from "./views/home.js";
 import { fetchPage as fetchFoodSafetyPage } from "./ingest/hygiene.js";
 import { redact } from "./lib/util.js";
+import { tidy } from "./views/format.js";
 
 const app = new Hono();
 const YEAR = 365 * 86400;
@@ -198,7 +199,7 @@ app.get("/hygiene/b/:key", async (c) => {
   if (!actions.length) return c.notFound();
   return c.html(
     <Layout
-      title={`${actions[0].biz_name} 위생 기록`}
+      title={`${tidy(actions[0].biz_name)} 위생 기록`}
       description={`${actions[0].biz_name}의 행정처분 기록 ${actions.length}건`}
       tab="hygiene"
       runs={runs}

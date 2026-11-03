@@ -1,7 +1,7 @@
 import type { ActionRow, BizSummary, RegionCount } from "../data.js";
 import { SEVERITY_HINT, SEVERITY_LABEL, violationTags } from "../lib/severity.js";
 import { SIDO_ORDER } from "../lib/region.js";
-import { ago, koDate, longDate, periodText, splitViolation } from "./format.js";
+import { ago, koDate, longDate, periodText, splitViolation, tidy } from "./format.js";
 import { Empty, Icon, Notice, SectionHead, Select, type IconName } from "./ui.js";
 
 export type HygieneQuery = {
@@ -154,13 +154,13 @@ export function SearchBox(props: { value?: string; region?: string; placeholder?
 export function BizRow(props: { b: BizSummary }) {
   const b = props.b;
   const tags = violationTags(b.last_violation).filter((t) => t !== "폐업 정리");
-  const text = b.last_violation ? splitViolation(b.last_violation).text : "";
+  const text = b.last_violation ? tidy(splitViolation(b.last_violation).text) : "";
   return (
     <a class="row" href={`/hygiene/b/${b.biz_key}`}>
       <div class="main">
-        <div class="title">{b.biz_name}</div>
+        <div class="title">{tidy(b.biz_name)}</div>
         <div class="sub">
-          {[b.biz_type, b.addr].filter(Boolean).join(", ")}
+          {[tidy(b.biz_type), tidy(b.addr)].filter(Boolean).join(", ")}
         </div>
         <div class="labels">
           <SeverityBadge sev={b.max_severity} />
@@ -381,14 +381,14 @@ export function BusinessPage(props: { actions: ActionRow[] }) {
         식당 위생
       </a>
       <section class="card">
-        <div class="t3 small">{head.biz_type}</div>
+        <div class="t3 small">{tidy(head.biz_type)}</div>
         <h1 class="page-title" style="margin:2px 0 8px">
-          {head.biz_name}
+          {tidy(head.biz_name)}
         </h1>
         {head.addr && (
           <p class="t2" style="display:flex;gap:6px;align-items:flex-start">
             <Icon name="pin" class="t3" />
-            <span>{head.addr}</span>
+            <span>{tidy(head.addr)}</span>
           </p>
         )}
         <div class="btn-row" style="margin-top:16px">
@@ -413,7 +413,7 @@ export function BusinessPage(props: { actions: ActionRow[] }) {
               공개된 처분이 {a.length}번 있어요{recent ? `. 최근 1년 동안 ${recent}번이에요.` : "."}
             </p>
             <p class="t2" style="margin-top:4px">
-              가장 최근은 {longDate(head.action_date)} {head.action_type ?? "처분"}이에요.
+              가장 최근은 {longDate(head.action_date)} {tidy(head.action_type) || "처분"}이에요.
             </p>
             {allTags.length > 0 && (
               <div class="labels">
@@ -431,16 +431,17 @@ export function BusinessPage(props: { actions: ActionRow[] }) {
         <ol class="history">
           {a.map((x) => {
             const v = x.violation ? splitViolation(x.violation) : null;
+            const detail = tidy(x.action_detail);
             const period = periodText(x.period_start, x.period_end);
             return (
               <li>
                 <div class="when">
                   <span class="date num">{longDate(x.action_date)}</span>
-                  <SeverityBadge sev={x.severity} label={x.action_type} />
+                  <SeverityBadge sev={x.severity} label={tidy(x.action_type)} />
                 </div>
-                {(x.action_detail || period) && (
+                {(detail || period) && (
                   <p class="period">
-                    {[x.action_detail && x.action_detail !== x.action_type ? x.action_detail : null, period]
+                    {[detail && detail !== tidy(x.action_type) ? detail : null, period]
                       .filter(Boolean)
                       .join(", ")}
                   </p>
@@ -448,10 +449,10 @@ export function BusinessPage(props: { actions: ActionRow[] }) {
                 {v && (
                   <p class="what">
                     {v.date && <span class="t3 small">{koDate(v.date, { weekday: false })} 적발 </span>}
-                    {v.text}
+                    {tidy(v.text)}
                   </p>
                 )}
-                {x.law && <p class="law">근거 {x.law}</p>}
+                {x.law && <p class="law">근거 {tidy(x.law)}</p>}
               </li>
             );
           })}

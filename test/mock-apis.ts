@@ -94,8 +94,8 @@ function makeHygieneRows() {
     ADDR: "서울특별시 강남구 예시로1길 1",
     DSPS_DCSNDT: "20261102",
     DSPS_TYPECD_NM: "영업정지",
-    DSPSCN: "영업정지 5일",
-    VILTCN: "2026.10.20 조리장 내 이물(쥐 배설물) 발견",
+    DSPSCN: "영업정지·5일",
+    VILTCN: "2026.10.20 조리장 내 이물(쥐 배설물) 발견 — 1차",
     LAWORD_CD_NM: "식품위생법 제7조",
   });
   return rows;
