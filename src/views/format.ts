@@ -90,7 +90,10 @@ const UNIT_ONLY = /^[\d.]+\s*(kg|g|개|구|마리|포기|L|ml)$/i;
 export function kindName(r: { item_name: string; kind_name: string }): string {
   const kind = r.kind_name?.trim();
   if (!kind || kind === r.item_name || kind === "일반" || kind === "-") return "";
-  const k = kind.replace(/\(\s*[\d.]+\s*(kg|g|개|구|마리|포기|L|ml)\s*\)$/i, "").trim();
+  let k = kind.replace(/\(\s*[\d.]+\s*(kg|g|개|구|마리|포기|L|ml)\s*\)$/i, "").trim();
+  // "20kg(햅쌀)"처럼 단위 뒤 괄호에 품종이 있으면 품종만 쓴다 (단위는 따로 보여 줌)
+  const m = k.match(/^[\d.]+\s*(kg|g|개|구|마리|포기|L|ml)\s*\((.+)\)$/i);
+  if (m) k = m[2].trim();
   if (!k || k === r.item_name || UNIT_ONLY.test(k)) return "";
   return k;
 }

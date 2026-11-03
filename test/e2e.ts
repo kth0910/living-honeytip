@@ -176,6 +176,12 @@ await step("prices page: weekly comparison, picks, item detail, regions", async 
   assert.match(item.text, /최근 12주 가격/);
   assert.match(item.text, /<svg class="chart"/);
   assert.match(item.text, /지역별 가격/);
+  // 정렬 값과 쪽 번호를 받아 첫 화면에 반영하고, 품목마다 정렬용 가격이 붙는다
+  const sorted = await get("/prices?s=cheap&pg=2");
+  assert.match(sorted.text, /<option value="cheap" selected/);
+  assert.match(sorted.text, /data-page="2"/);
+  assert.match(p.text, /data-price="\d+"/);
+  assert.match(p.text, /id="ppager"/);
   const seoul = await get("/prices?r=1101");
   assert.match(seoul.text, /서울 평균 소매가/);
   const missing = await get("/prices/item?k=x~y~z~w");

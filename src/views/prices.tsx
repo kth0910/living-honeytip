@@ -2,6 +2,7 @@ import type { HistoryPoint, PriceRow } from "../data.js";
 import { weeklyChange } from "../data.js";
 import { itemSub, itemTitle, josa, koDate, kindName, pct, rankLabel, shortDate, tidy, trendOf, won, type Trend } from "./format.js";
 import { Empty, Icon, SectionHead, Select } from "./ui.js";
+import { PRICE_PAGE_SIZE } from "./client.js";
 
 const CAT_ORDER = ["200", "400", "500", "600", "100", "300"];
 const CAT_SHORT: Record<string, string> = {
@@ -73,7 +74,7 @@ export function PricesPage(props: {
   region: string;
   regionName: string;
   regions: { region_code: string; region_name: string; n: number }[];
-  init: { c: string; q: string; s: string };
+  init: { c: string; q: string; s: string; page: number };
 }) {
   const { rows, date } = props;
   if (!date || rows.length === 0) {
@@ -101,6 +102,7 @@ export function PricesPage(props: {
       cats.indexOf(a.category_code) - cats.indexOf(b.category_code) || itemTitle(a).localeCompare(itemTitle(b), "ko"),
   );
   const topNames = [...new Set(drops.map((x) => x.r.item_name))].slice(0, 3);
+  const plain = props.init.s === "cat" && !props.init.c && !props.init.q && props.init.page <= 1;
   const headline =
     compared === 0
       ? "지난주 가격과 비교할 자료를 모으고 있어요."
@@ -179,7 +181,7 @@ export function PricesPage(props: {
           />
         </div>
         <div class="toolbar">
-          <div class="chips" role="group" aria-label="종류">
+          <div class="chips scroll" role="group" aria-label="종류">
             <a class="chip" href="?" data-cat-chip="" aria-pressed={props.init.c === "" ? "true" : "false"}>
               전체
             </a>
@@ -205,25 +207,40 @@ export function PricesPage(props: {
               <option value="rise" selected={props.init.s === "rise"}>
                 많이 오른 순
               </option>
+              <option value="cheap" selected={props.init.s === "cheap"}>
+                가격 낮은 순
+              </option>
+              <option value="pricey" selected={props.init.s === "pricey"}>
+                가격 높은 순
+              </option>
               <option value="name" selected={props.init.s === "name"}>
                 이름순
               </option>
             </Select>
           </div>
         </div>
-        <ul class="rows" id="plist" data-cat={props.init.c}>
+        <ul class="rows" id="plist" data-cat={props.init.c} data-page={String(props.init.page)}>
           {ordered.map((r, i) => {
             const ch = weeklyChange(r);
             const lvl = levelOf(r);
             const showHead = i === 0 || ordered[i - 1].category_code !== r.category_code;
+            // 스크립트가 돌기 전에도 첫 페이지만 보이게 (기본 상태일 때)
+            const preHide = plain && i >= PRICE_PAGE_SIZE;
+            const headHidden = plain && i >= PRICE_PAGE_SIZE;
             return (
               <>
                 {showHead && (
-                  <li class="row-head" data-head={r.category_code}>
+                  <li class={`row-head${headHidden ? " hidden" : ""}`} data-head={r.category_code}>
                     {catShort(r.category_code, r.category_name)}
                   </li>
                 )}
-                <li data-cat={r.category_code} data-name={`${itemTitle(r)} ${tidy(r.item_name)} ${tidy(r.kind_name)}`} data-ch={ch ?? ""}>
+                <li
+                  class={preHide ? "hidden" : undefined}
+                  data-cat={r.category_code}
+                  data-name={`${itemTitle(r)} ${tidy(r.item_name)} ${tidy(r.kind_name)}`}
+                  data-ch={ch ?? ""}
+                  data-price={String(r.price)}
+                >
                   <a class="row" href={itemHref(r, props.region)}>
                     <div class="main">
                       <div class="title">{itemTitle(r)}</div>
@@ -249,6 +266,19 @@ export function PricesPage(props: {
         <div id="pempty" class="empty hidden">
           <p>찾는 품목이 없어요. 다른 이름으로 찾아보세요.</p>
         </div>
+        <nav id="ppager" class={`pager${rows.length > PRICE_PAGE_SIZE ? "" : " hidden"}`} aria-label="품목 페이지">
+          <button id="pprev" type="button" class="btn secondary small" aria-label="이전 페이지" disabled>
+            <Icon name="chevron-left" />
+            이전
+          </button>
+          <span id="ppos" class="t3 small num" aria-live="polite">
+            1 / {Math.max(1, Math.ceil(rows.length / PRICE_PAGE_SIZE))}
+          </span>
+          <button id="pnext" type="button" class="btn secondary small" aria-label="다음 페이지">
+            다음
+            <Icon name="chevron-right" />
+          </button>
+        </nav>
       </section>
 
       <section class="card">

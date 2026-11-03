@@ -240,7 +240,8 @@ app.get("/prices", async (c) => {
         init={{
           c: /^\d{3}$/.test(cParam) ? cParam : "",
           q: (c.req.query("q") ?? "").slice(0, 30),
-          s: ["cat", "drop", "rise", "name"].includes(sParam) ? sParam : "cat",
+          s: ["cat", "drop", "rise", "cheap", "pricey", "name"].includes(sParam) ? sParam : "cat",
+          page: Math.min(100, Math.max(1, Number(c.req.query("pg")) || 1)),
         }}
       />
     </Layout>,
