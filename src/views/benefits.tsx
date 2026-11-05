@@ -95,14 +95,22 @@ function Rows(props: { items: BenefitRow[] }) {
 
 const AGES: { label: string; age: number | null }[] = [
   { label: "모든 나이", age: null },
-  { label: "10대", age: 15 },
-  { label: "20대", age: 25 },
-  { label: "30대", age: 35 },
-  { label: "40대", age: 45 },
-  { label: "50대", age: 55 },
-  { label: "60대", age: 65 },
-  { label: "70대 이상", age: 75 },
+  { label: "10대", age: 10 },
+  { label: "20대", age: 20 },
+  { label: "30대", age: 30 },
+  { label: "40대", age: 40 },
+  { label: "50대", age: 50 },
+  { label: "60대", age: 60 },
+  { label: "70대 이상", age: 70 },
 ];
+
+/** "서울 마포구에 사는 30대라면", "서울 마포구에 살면", "30대라면", "지금" */
+function headline(region: string, ageLabel: string): string {
+  if (region && ageLabel) return `${region}에 사는 ${ageLabel}라면`;
+  if (region) return `${region}에 살면`;
+  if (ageLabel) return `${ageLabel}라면`;
+  return "지금";
+}
 
 function Filters(props: { b: BenefitQuery; regions: { sido: string; sigungu: string | null; n: number }[]; fields: { field: string; n: number }[] }) {
   const { b } = props;
@@ -216,8 +224,8 @@ export function BenefitsPage(props: {
             <>
               <section class="card">
                 <p class="strong" style="font-size:19px;line-height:1.45">
-                  {b.region ? `${regionLabel}에 살고` : "조건에 맞는"}
-                  {b.age !== null ? ` ${AGES.find((a) => a.age === b.age)?.label ?? ""}라면` : ""} 받을 수 있는 혜택이{" "}
+                  {headline(b.region ? regionLabel : "", AGES.find((a) => a.age !== null && a.age === b.age)?.label ?? "")} 받을 수 있는
+                  혜택이{" "}
                   <span class="num" style="color:var(--brand)">
                     {props.counts.total.toLocaleString()}개
                   </span>{" "}

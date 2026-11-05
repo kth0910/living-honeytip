@@ -71,8 +71,11 @@ function where(f: BenefitFilter, params: unknown[]): string {
     w.push("FALSE");
   }
   if (f.age !== null && f.age !== undefined && Number.isFinite(f.age)) {
-    params.push(f.age);
-    w.push(`(age_min IS NULL OR age_min <= $${params.length}) AND (age_max IS NULL OR age_max >= $${params.length})`);
+    // 나이는 10살 단위(30대 = 30~39세). 혜택 나이 범위가 그 구간과 겹치면 보여 준다.
+    const lo = Math.min(70, Math.floor(f.age / 10) * 10);
+    const hi = lo >= 70 ? 150 : lo + 9;
+    params.push(lo, hi);
+    w.push(`(age_min IS NULL OR age_min <= $${params.length}) AND (age_max IS NULL OR age_max >= $${params.length - 1})`);
   }
   if (f.field) {
     params.push(f.field);

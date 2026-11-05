@@ -140,6 +140,12 @@ await step("benefits ingest and pages: region, age, field, detail", async () => 
   assert.match(gn.text, /강남구 출산축하금/);
   assert.match(gn.text, /서울시 청년수당/);
   assert.ok(!gn.text.includes("마포구 어르신 교통비"));
+  assert.match(gn.text, /서울 강남구에 사는 30대라면 받을 수 있는/);
+  assert.match(gn.text, /<option value="30" selected="">30대<\/option>|<option value="30" selected>30대<\/option>/);
+  // 나이는 10살 단위: 38살도 30대로 보고 19~34세 혜택을 보여 준다
+  const g38 = await get("/benefits?age=38");
+  assert.match(g38.text, /청년월세 특별지원/);
+  assert.match(g38.text, /30대라면 받을 수 있는/);
   const list = await get("/benefits?list=local&r=" + encodeURIComponent("서울 강남구"));
   assert.match(list.text, /강남구 출산축하금/);
   assert.ok(!list.text.includes("청년월세 특별지원"), "local list has only local benefits");

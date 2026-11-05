@@ -369,12 +369,12 @@ app.get("/benefits", async (c) => {
   const ageParam = c.req.query("age");
   let age: number | null = null;
   if (ageParam !== undefined) {
-    age = ageParam === "" ? null : Math.min(120, Math.max(0, Number(ageParam) || 0));
+    age = ageParam === "" || !/^\d{1,3}$/.test(ageParam) ? null : Math.min(70, Math.floor(Number(ageParam) / 10) * 10);
     if (age === null) deleteCookie(c, "age", { path: "/" });
     else setCookie(c, "age", String(age), { path: "/", maxAge: YEAR, sameSite: "Lax" });
   } else {
     const ck = getCookie(c, "age");
-    age = ck && /^\d{1,3}$/.test(ck) ? Number(ck) : null;
+    age = ck && /^\d{1,3}$/.test(ck) ? Math.min(70, Math.floor(Number(ck) / 10) * 10) : null;
   }
   const field = (c.req.query("f") ?? "").slice(0, 20);
   const whoParam = c.req.query("who") ?? "";
