@@ -170,6 +170,12 @@ function priceRows(ymd: string) {
   return rows;
 }
 
+/** 한국 날짜로 오늘부터 n일 뒤 (YYYY.MM.DD) */
+function soon(n: number): string {
+  const d = new Date(Date.now() + 9 * 3600_000 + n * 86400_000);
+  return d.toISOString().slice(0, 10).replace(/-/g, ".");
+}
+
 // 공공서비스(혜택) 가짜 자료 (odcloud gov24 형식)
 function makeBenefits() {
   const mk = (id: string, name: string, field: string, agency: string, agencyType: string, views: number, reg: string, extra: Record<string, unknown> = {}) => ({
@@ -184,6 +190,14 @@ function makeBenefits() {
     mk("200000000001", "강남구 출산축하금", "임신·출산", "서울특별시 강남구", "시군구", 5000, "20261020000000"),
     mk("200000000002", "마포구 어르신 교통비", "보호·돌봄", "서울특별시 마포구", "시군구", 3000, "20261001000000"),
     mk("300000000001", "서울시 청년수당", "고용·창업", "서울특별시", "광역시도", 40000, "20250101000000"),
+    // 신청 기간이 끝난 혜택 (조회수는 가장 많음): 기본 목록에서 빠져야 한다
+    mk("100000000003", "상생페이백", "생활안정", "중소벤처기업부", "중앙행정기관", 900000, "20250827000000", {
+      신청기한: "2025.09.15~2025.12.31",
+    }),
+    // 마감이 닷새 남은 혜택
+    mk("100000000004", "마감 임박 바우처", "생활안정", "보건복지부", "중앙행정기관", 1000, "20260301000000", {
+      신청기한: `2026.03.02~${soon(5)}`,
+    }),
   ];
   const cond: Record<string, unknown>[] = [
     { 서비스ID: "100000000001", JA0110: 19, JA0111: 34 },

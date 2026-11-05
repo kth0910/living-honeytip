@@ -383,8 +383,9 @@ app.get("/benefits", async (c) => {
   const list = ["popular", "new", "local"].includes(listParam) ? listParam : "";
   const page = Math.min(300, Math.max(1, Number(c.req.query("page")) || 1));
   const { sido, sigungu } = splitRegionParam(region);
-  const b: BenefitQuery = { q, region, age, field, who, list, page };
-  const base = { q, sido, sigungu, age, field: field || null, who: who || null };
+  const ended = c.req.query("end") === "1";
+  const b: BenefitQuery = { q, region, age, field, who, list, page, ended };
+  const base = { q, sido, sigungu, age, field: field || null, who: who || null, ended: ended ? ("include" as const) : ("hide" as const) };
   const pageSize = 20;
   const browsing = !q && !list;
   const [regions, fields, counts, runs, any, popular, fresh, local, listed] = await Promise.all([

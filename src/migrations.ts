@@ -249,4 +249,12 @@ CREATE TABLE goods_stats (
 );
 `,
   },
+  {
+    // 신청기한 글에서 뽑은 '신청이 끝나는 날'. 원본은 그대로 두고 화면에서만 거른다.
+    id: "009_benefits_apply_end",
+    sql: `
+ALTER TABLE benefits ADD COLUMN apply_end date;
+CREATE INDEX benefits_apply_end_idx ON benefits (apply_end) WHERE apply_end IS NOT NULL;
+`,
+  },
 ];

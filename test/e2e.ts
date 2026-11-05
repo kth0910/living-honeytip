@@ -2,6 +2,7 @@
 //   TEST_DATABASE_URL=postgres://... npm test
 import assert from "node:assert/strict";
 import { startMock } from "./mock-apis.js";
+import { applyEnd } from "../src/lib/apply-period.js";
 
 const MOCK_PORT = 48711;
 const APP_PORT = 48712;
@@ -125,12 +126,51 @@ await step("hygiene grades ingest (C004) without personal fields, linked to acti
   assert.equal(again.status, "ok");
 });
 
+await step("apply period parser: end dates from free-form 신청기한", async () => {
+  const cases: [string, string | null][] = [
+    ["2025.09.15~2025.12.31", "2025-12-31"],
+    ["상시신청", null],
+    ["접수기관 별 상이", null],
+    ["매년 1~2월", null],
+    ["2025-07-14 ~ 예산소진 시까지", null],
+    ["2025.01.23.~", null],
+    ["2026년 1월~(예산 범위 내)", null],
+    ["'26. 3. 18. ~ 4. 6.", "2026-04-06"],
+    ["2026. 1. ~ 12.", "2026-12-31"],
+    ["2025. 12. 1. ~ 1. 15.", "2026-01-15"],
+    ["2025년 2~4월중 신청예정", "2025-04-30"],
+    ["(2026년 2학기) (1차) 2026년 5월 22일~6월 22일 (2차) 2026년 8월 12일~ 9월 9일", "2026-09-09"],
+    ["20250901~20250930", "2025-09-30"],
+    ["2026. 3. 9.(월) 09:00 ~ 2026. 3. 23.(월) 18:00", "2026-03-23"],
+    ["'27년도 신규과제 지원 없음('28년도 종료 사업)", "2028-12-31"],
+  ];
+  for (const [text, want] of cases) assert.equal(applyEnd(text), want, text);
+});
+
 await step("benefits ingest and pages: region, age, field, detail", async () => {
   const r = await runJob("benefits", "test");
   assert.equal(r.status, "ok", JSON.stringify(r));
   const [c] = await query<{ n: number; local: number }>(`SELECT count(*)::int AS n, count(sido)::int AS local FROM benefits`);
-  assert.equal(c.n, 5);
+  assert.equal(c.n, 7);
   assert.equal(c.local, 3);
+  // 신청 기간이 끝난 혜택은 저장은 하되 기본 목록과 개수에서 뺀다
+  const [e] = await query<{ apply_end: string }>(`SELECT apply_end::text FROM benefits WHERE id = '100000000003'`);
+  assert.equal(e.apply_end, "2025-12-31");
+  const home = await get("/benefits");
+  assert.ok(!home.text.includes("상생페이백"), "ended benefit hidden by default");
+  assert.match(home.text, /신청 기간이 끝난 혜택 1개는 뺐어요/);
+  assert.match((await get("/benefits?list=popular")).text, /마감 5일 전/);
+  const withEnded = await get("/benefits?list=popular&end=1");
+  assert.match(withEnded.text, /상생페이백/);
+  assert.match(withEnded.text, /신청 끝남/);
+  assert.match(withEnded.text, /빼고 보기/);
+  const endedDetail = await get("/benefits/100000000003");
+  assert.equal(endedDetail.status, 200);
+  assert.match(endedDetail.text, /신청 기간이 끝났어요\. 2025년 12월 31일까지였어요/);
+  assert.match(endedDetail.text, /정부24에서 자세히 보기/);
+  assert.ok(!endedDetail.text.includes("자세히 보고 신청하기"));
+  const homePage = await get("/");
+  assert.ok(!homePage.text.includes("상생페이백"), "home hides ended benefits too");
   const all = await get("/benefits");
   assert.equal(all.status, 200);
   assert.match(all.text, /많이 찾는 혜택/);

@@ -2,6 +2,7 @@
 //   GET {base}/serviceList?page=&perPage=&serviceKey=     서비스 목록(이름, 지원 내용, 대상, 기관, 조회수 ...)
 //   GET {base}/supportConditions?page=&perPage=&serviceKey= 지원 조건 코드(연령 JA0110~JA0111 등)
 import { query } from "../db.js";
+import { applyEnd } from "../lib/apply-period.js";
 import { normalizeSido, parseRegion } from "../lib/region.js";
 import { fetchWithTimeout, redact } from "../lib/util.js";
 
@@ -76,6 +77,7 @@ export function normalizeBenefit(row: Row, cond?: Row) {
     content: str(row["지원내용"]),
     applyMethod: str(row["신청방법"]),
     deadline: str(row["신청기한"]),
+    applyEnd: applyEnd(str(row["신청기한"])),
     receiver: str(row["접수기관"]),
     contact: str(row["전화문의"]),
     url: str(row["상세조회URL"]),
@@ -96,15 +98,15 @@ async function upsert(recs: ReturnType<typeof normalizeBenefit>[]): Promise<numb
     await query(
       `INSERT INTO benefits (id, name, summary, field, user_type, support_type, agency, agency_type, dept, target,
          criteria, content, apply_method, deadline, receiver, contact, url, views, registered_at, modified_at,
-         age_min, age_max, sido, sigungu, conditions, raw)
+         age_min, age_max, sido, sigungu, conditions, raw, apply_end)
        SELECT id, name, summary, field, "userType", "supportType", agency, "agencyType", dept, target,
          criteria, content, "applyMethod", deadline, receiver, contact, url, views, "registeredAt", "modifiedAt",
-         "ageMin", "ageMax", sido, sigungu, conditions, raw
+         "ageMin", "ageMax", sido, sigungu, conditions, raw, "applyEnd"
        FROM jsonb_to_recordset($1::jsonb) AS x(
          id text, name text, summary text, field text, "userType" text, "supportType" text, agency text,
          "agencyType" text, dept text, target text, criteria text, content text, "applyMethod" text, deadline text,
          receiver text, contact text, url text, views int, "registeredAt" timestamptz, "modifiedAt" timestamptz,
-         "ageMin" int, "ageMax" int, sido text, sigungu text, conditions jsonb, raw jsonb)
+         "ageMin" int, "ageMax" int, sido text, sigungu text, conditions jsonb, raw jsonb, "applyEnd" date)
        ON CONFLICT (id) DO UPDATE SET
          name = EXCLUDED.name, summary = EXCLUDED.summary, field = EXCLUDED.field, user_type = EXCLUDED.user_type,
          support_type = EXCLUDED.support_type, agency = EXCLUDED.agency, agency_type = EXCLUDED.agency_type,
@@ -113,7 +115,7 @@ async function upsert(recs: ReturnType<typeof normalizeBenefit>[]): Promise<numb
          contact = EXCLUDED.contact, url = EXCLUDED.url, views = EXCLUDED.views,
          registered_at = EXCLUDED.registered_at, modified_at = EXCLUDED.modified_at,
          age_min = EXCLUDED.age_min, age_max = EXCLUDED.age_max, sido = EXCLUDED.sido, sigungu = EXCLUDED.sigungu,
-         conditions = EXCLUDED.conditions, raw = EXCLUDED.raw, seen_at = now()`,
+         conditions = EXCLUDED.conditions, raw = EXCLUDED.raw, apply_end = EXCLUDED.apply_end, seen_at = now()`,
       [JSON.stringify(recs.slice(i, i + 300))],
     );
   }

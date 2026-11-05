@@ -16,6 +16,10 @@ export type BenefitRow = {
   sigungu: string | null;
   age_min: number | null;
   age_max: number | null;
+  /** 신청이 끝나는 날 (YYYY-MM-DD). 모르거나 열려 있으면 null */
+  apply_end: string | null;
+  /** 끝나는 날까지 남은 날 (지났으면 음수) */
+  days_left: number | null;
 };
 
 export type BenefitDetail = BenefitRow & {
@@ -41,16 +45,25 @@ export type BenefitFilter = {
   field?: string | null;
   who?: string | null; // 개인 | 가구 | 소상공인
   newDays?: number | null;
+  /** 신청 기간이 끝난 혜택: 빼기(기본), 함께, 그것만 */
+  ended?: "hide" | "include" | "only";
   sort?: "views" | "new";
   page?: number;
   pageSize?: number;
 };
 
+/** 한국 날짜 기준 오늘 */
+const TODAY = `(now() AT TIME ZONE 'Asia/Seoul')::date`;
+
 const COLS = `id, name, summary, field, user_type, support_type, agency, agency_type, views,
-  to_char(registered_at AT TIME ZONE 'Asia/Seoul', 'YYYY-MM-DD') AS registered_at, sido, sigungu, age_min, age_max`;
+  to_char(registered_at AT TIME ZONE 'Asia/Seoul', 'YYYY-MM-DD') AS registered_at, sido, sigungu, age_min, age_max,
+  to_char(apply_end, 'YYYY-MM-DD') AS apply_end, (apply_end - ${TODAY})::int AS days_left`;
 
 function where(f: BenefitFilter, params: unknown[]): string {
   const w: string[] = ["ended_at IS NULL"];
+  const ended = f.ended ?? "hide";
+  if (ended === "hide") w.push(`(apply_end IS NULL OR apply_end >= ${TODAY})`);
+  else if (ended === "only") w.push(`apply_end < ${TODAY}`);
   for (const t of (f.q ?? "").trim().split(/\s+/).filter(Boolean).slice(0, 5)) {
     params.push(`%${t.replace(/[\\%_]/g, (m) => "\\" + m)}%`);
     const i = params.length;
@@ -118,24 +131,30 @@ export async function benefitById(id: string): Promise<BenefitDetail | null> {
 
 export async function benefitFields(): Promise<{ field: string; n: number }[]> {
   return query(
-    `SELECT field, count(*)::int AS n FROM benefits WHERE ended_at IS NULL AND field IS NOT NULL
+    `SELECT field, count(*)::int AS n FROM benefits
+      WHERE ended_at IS NULL AND field IS NOT NULL AND (apply_end IS NULL OR apply_end >= ${TODAY})
       GROUP BY field ORDER BY n DESC`,
   );
 }
 
-export async function benefitCounts(f: BenefitFilter): Promise<{ total: number; local: number; recent: number }> {
+export async function benefitCounts(
+  f: BenefitFilter,
+): Promise<{ total: number; local: number; recent: number; ended: number }> {
   const p1: unknown[] = [];
   const all = where({ ...f, localOnly: false }, p1);
   const p2: unknown[] = [];
   const local = where({ ...f, localOnly: true }, p2);
   const p3: unknown[] = [];
   const recent = where({ ...f, newDays: 60 }, p3);
-  const [[a], [b], [c]] = await Promise.all([
+  const p4: unknown[] = [];
+  const ended = where({ ...f, localOnly: false, ended: "only" }, p4);
+  const [[a], [b], [c], [d]] = await Promise.all([
     query<{ n: number }>(`SELECT count(*)::int AS n FROM benefits WHERE ${all}`, p1),
     query<{ n: number }>(`SELECT count(*)::int AS n FROM benefits WHERE ${local}`, p2),
     query<{ n: number }>(`SELECT count(*)::int AS n FROM benefits WHERE ${recent}`, p3),
+    query<{ n: number }>(`SELECT count(*)::int AS n FROM benefits WHERE ${ended}`, p4),
   ]);
-  return { total: a?.n ?? 0, local: b?.n ?? 0, recent: c?.n ?? 0 };
+  return { total: a?.n ?? 0, local: b?.n ?? 0, recent: c?.n ?? 0, ended: d?.n ?? 0 };
 }
 
 export async function benefitRegions(): Promise<{ sido: string; sigungu: string | null; n: number }[]> {

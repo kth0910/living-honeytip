@@ -11,6 +11,8 @@ export type BenefitQuery = {
   who: string; // "" | 개인 | 가구 | 소상공인
   list: string; // "" 둘러보기 | "popular" | "new" | "local"
   page: number;
+  /** 신청 기간이 끝난 혜택도 함께 보기 */
+  ended: boolean;
 };
 
 /** 분야 이름을 문장에 어울리게 (원문은 '보육·교육'처럼 가운뎃점) */
@@ -57,6 +59,7 @@ export function benefitHref(b: BenefitQuery, over: Partial<BenefitQuery> = {}, p
   if (s.field) u.set("f", s.field);
   if (s.who) u.set("who", s.who);
   if (s.list) u.set("list", s.list);
+  if (s.ended) u.set("end", "1");
   if (page > 1) u.set("page", String(page));
   const qs = u.toString();
   return `/benefits${qs ? `?${qs}` : ""}`;
@@ -74,10 +77,45 @@ export function BenefitRowItem(props: { b: BenefitRow; showRegion?: boolean }) {
           {b.field && <span class="label plain">{fieldLabel(b.field)}</span>}
           {b.support_type && <span class="label good">{supportLabel(b.support_type)}</span>}
           <span class="label flat">{props.showRegion === false ? tidy(b.agency) : where}</span>
+          <DueLabel daysLeft={b.days_left} />
         </div>
       </div>
       <Icon name="chevron-right" class="chev" />
     </a>
+  );
+}
+
+/** 마감이 2주 안이면 "마감 3일 전", 지났으면 "신청 끝남" */
+function DueLabel(props: { daysLeft: number | null }) {
+  const n = props.daysLeft;
+  if (n === null || n === undefined) return null;
+  if (n < 0) return <span class="label sev0">신청 끝남</span>;
+  if (n > 14) return null;
+  return <span class="label sev2">{n === 0 ? "오늘 마감" : `마감 ${n}일 전`}</span>;
+}
+
+/** 끝난 혜택을 뺐다고 알려 주고 같이 보기를 고르게 */
+function EndedNote(props: { b: BenefitQuery; n: number }) {
+  if (props.n <= 0) return null;
+  const { b } = props;
+  return (
+    <p class="small t3" style="margin:12px 0 0">
+      {b.ended ? (
+        <>
+          신청 기간이 끝난 혜택 {props.n.toLocaleString()}개도 함께 보고 있어요.{" "}
+          <a class="t2" style="text-decoration:underline;text-underline-offset:3px" href={benefitHref(b, { ended: false })}>
+            빼고 보기
+          </a>
+        </>
+      ) : (
+        <>
+          신청 기간이 끝난 혜택 {props.n.toLocaleString()}개는 뺐어요.{" "}
+          <a class="t2" style="text-decoration:underline;text-underline-offset:3px" href={benefitHref(b, { ended: true })}>
+            같이 보기
+          </a>
+        </>
+      )}
+    </p>
   );
 }
 
@@ -121,6 +159,7 @@ function Filters(props: { b: BenefitQuery; regions: { sido: string; sigungu: str
         {b.field && <input type="hidden" name="f" value={b.field} />}
         {b.who && <input type="hidden" name="who" value={b.who} />}
         {b.list && <input type="hidden" name="list" value={b.list} />}
+        {b.ended && <input type="hidden" name="end" value="1" />}
         <div class="pair">
           <div>
             <div class="filter-label">사는 곳</div>
@@ -181,7 +220,7 @@ export function BenefitsPage(props: {
   b: BenefitQuery;
   regions: { sido: string; sigungu: string | null; n: number }[];
   fields: { field: string; n: number }[];
-  counts: { total: number; local: number; recent: number };
+  counts: { total: number; local: number; recent: number; ended: number };
   /** 둘러보기 화면의 묶음들 */
   popular?: BenefitRow[];
   fresh?: BenefitRow[];
@@ -208,6 +247,7 @@ export function BenefitsPage(props: {
         </label>
         {b.region && <input type="hidden" name="r" value={b.region} />}
         {b.age !== null && <input type="hidden" name="age" value={String(b.age)} />}
+        {b.ended && <input type="hidden" name="end" value="1" />}
       </form>
 
       {!props.hasData ? (
@@ -235,6 +275,7 @@ export function BenefitsPage(props: {
                   {b.region && <span class="label good">우리 동네 혜택 {props.counts.local.toLocaleString()}개</span>}
                   <span class="label plain">최근 60일 새 혜택 {props.counts.recent.toLocaleString()}개</span>
                 </div>
+                <EndedNote b={b} n={props.counts.ended} />
               </section>
 
               {props.local && props.local.length > 0 && (
@@ -278,6 +319,9 @@ export function BenefitsPage(props: {
                 <Rows items={props.list!.items} />
               )}
               <Pager b={b} total={props.list!.total} pageSize={props.pageSize} />
+              <div style="padding:0 20px 16px">
+                <EndedNote b={b} n={props.counts.ended} />
+              </div>
             </section>
           )}
 
@@ -340,6 +384,7 @@ export function BenefitDetailPage(props: { d: BenefitDetail }) {
     d.age_min !== null && d.age_max !== null && !(d.age_min <= 0 && d.age_max >= 100)
       ? `${d.age_min}세부터 ${d.age_max}세까지`
       : null;
+  const over = d.days_left !== null && d.days_left < 0;
   return (
     <>
       <a class="small t3" href="/benefits" style="display:inline-flex;align-items:center;gap:2px;margin-top:8px">
@@ -363,10 +408,18 @@ export function BenefitDetailPage(props: { d: BenefitDetail }) {
           {d.support_type && <span class="label good">{supportLabel(d.support_type)}</span>}
           <span class="label plain">{where}</span>
           {age && <span class="label plain">{age}</span>}
+          {!over && <DueLabel daysLeft={d.days_left} />}
         </div>
+        {over && (
+          <div style="margin-top:16px">
+            <Notice icon="clock" tone="warn">
+              신청 기간이 끝났어요. {longDate(d.apply_end!)}까지였어요. 다시 모집하는지는 담당 기관에 물어보세요.
+            </Notice>
+          </div>
+        )}
         {d.url && (
-          <a class="btn block" href={d.url} target="_blank" rel="noopener noreferrer" style="margin-top:16px">
-            정부24에서 자세히 보고 신청하기
+          <a class={over ? "btn secondary block" : "btn block"} href={d.url} target="_blank" rel="noopener noreferrer" style="margin-top:16px">
+            {over ? "정부24에서 자세히 보기" : "정부24에서 자세히 보고 신청하기"}
             <Icon name="external" />
           </a>
         )}
