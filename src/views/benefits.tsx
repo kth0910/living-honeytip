@@ -113,11 +113,11 @@ function Filters(props: { b: BenefitQuery; regions: { sido: string; sigungu: str
         {b.field && <input type="hidden" name="f" value={b.field} />}
         {b.who && <input type="hidden" name="who" value={b.who} />}
         {b.list && <input type="hidden" name="list" value={b.list} />}
-        <div class="two-col">
+        <div class="pair">
           <div>
             <div class="filter-label">사는 곳</div>
             <Select name="r" label="사는 곳" autosubmit>
-              <RegionOptions regions={props.regions} value={b.region} allLabel="전국 (사는 곳을 골라 보세요)" />
+              <RegionOptions regions={props.regions} value={b.region} allLabel="전국" />
             </Select>
           </div>
           <div>
@@ -139,7 +139,7 @@ function Filters(props: { b: BenefitQuery; regions: { sido: string; sigungu: str
       </form>
       <div class="filter-group">
         <div class="filter-label">분야</div>
-        <div class="chips" role="group" aria-label="분야">
+        <div class="chips scroll" role="group" aria-label="분야">
           <a class="chip" href={benefitHref(b, { field: "" })} aria-current={!b.field ? "true" : undefined}>
             전체
           </a>
@@ -152,7 +152,7 @@ function Filters(props: { b: BenefitQuery; regions: { sido: string; sigungu: str
       </div>
       <div class="filter-group">
         <div class="filter-label">받는 사람</div>
-        <div class="chips" role="group" aria-label="받는 사람">
+        <div class="chips scroll" role="group" aria-label="받는 사람">
           {[
             ["", "누구나"],
             ["개인", "나"],

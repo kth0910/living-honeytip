@@ -140,6 +140,7 @@ export function tidy(text: string | null | undefined): string {
     .replace(/\s*[·ㆍ‧∙•]\s*/g, ", ")
     .replace(/\s*[—–]\s*/g, ", ")
     .replace(/\s+-\s+/g, ", ")
+    .replace(/\s*\|\|+\s*/g, ", ")
     .replace(/,\s*,/g, ",")
     .trim();
 }
