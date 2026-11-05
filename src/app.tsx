@@ -7,6 +7,9 @@ import {
   businessActions,
   hygieneRegions,
   hygieneStats,
+  gradeStats,
+  gradesForBiz,
+  searchGrades,
   lastRuns,
   latestPriceDate,
   priceByRegion,
@@ -115,11 +118,12 @@ function rememberedPriceRegion(c: Context): string {
 app.get("/", async (c) => {
   const region = rememberedHygieneRegion(c);
   const { sido, sigungu } = splitRegionParam(region);
-  const [regions, recent, runs, date] = await Promise.all([
+  const [regions, recent, runs, date, goodOnes] = await Promise.all([
     hygieneRegions(),
     searchBusinesses({ sido, sigungu, sinceDays: 365, eatOnly: true, pageSize: 5 }),
     lastRuns(),
     latestPriceDate(),
+    searchGrades({ sido, sigungu, pageSize: 3 }),
   ]);
   let drops: any[] = [];
   let rises: any[] = [];
@@ -130,7 +134,15 @@ app.get("/", async (c) => {
   }
   return c.html(
     <Layout title="홈" tab="home" runs={runs}>
-      <HomePage region={region} regions={regions} recent={recent.items} priceDate={date} drops={drops} rises={rises} />
+      <HomePage
+        region={region}
+        regions={regions}
+        recent={recent.items}
+        graded={goodOnes}
+        priceDate={date}
+        drops={drops}
+        rises={rises}
+      />
     </Layout>,
   );
 });
@@ -150,16 +162,22 @@ app.get("/hygiene", async (c) => {
   // 가게 이름으로 찾을 땐 모든 업소, 동네 둘러보기는 식당과 카페만이 기본
   const kParam = c.req.query("k");
   const scope = kParam === "eat" || kParam === "all" ? kParam : q ? "all" : "eat";
-  const hq: HygieneQuery = { q, region, sev, period, scope, page };
+  const view = c.req.query("v") === "grade" ? "grade" : "actions";
+  const hq: HygieneQuery = { q, region, sev, period, scope, view, page };
   const { sido, sigungu } = splitRegionParam(region);
   const sinceDays = period === "1y" ? 365 : period === "3y" ? 1095 : null;
   const pageSize = 20;
 
-  const [regions, result, runs, any] = await Promise.all([
+  const [regions, result, runs, any, grades, gStats, gradeMatches] = await Promise.all([
     hygieneRegions(),
-    searchBusinesses({ q, sido, sigungu, minSeverity: sev, sinceDays, eatOnly: scope === "eat", page, pageSize }),
+    view === "actions"
+      ? searchBusinesses({ q, sido, sigungu, minSeverity: sev, sinceDays, eatOnly: scope === "eat", page, pageSize })
+      : Promise.resolve({ items: [], total: 0 }),
     lastRuns(),
     query<{ ok: boolean }>(`SELECT EXISTS (SELECT 1 FROM hygiene_actions) AS ok`),
+    view === "grade" ? searchGrades({ q, sido, sigungu, page, pageSize }) : Promise.resolve(undefined),
+    view === "grade" && !q ? gradeStats({ sido, sigungu }) : Promise.resolve(null),
+    view === "actions" && q ? searchGrades({ q, sido, sigungu, pageSize: 5 }) : Promise.resolve(undefined),
   ]);
   let stats = null;
   if (!q && any[0]?.ok) {
@@ -187,6 +205,9 @@ app.get("/hygiene", async (c) => {
         ingestFailing={!runs.hygiene?.lastOk && runs.hygiene?.last?.status === "error"}
         regionLabel={region || "전국"}
         periodLabel={periodLabel}
+        grades={grades}
+        gradeStats={gStats}
+        gradeMatches={gradeMatches}
       />
     </Layout>,
   );
@@ -195,16 +216,21 @@ app.get("/hygiene", async (c) => {
 app.get("/hygiene/b/:key", async (c) => {
   const key = c.req.param("key");
   if (!/^[0-9a-f]{16}$/.test(key)) return c.notFound();
-  const [actions, runs] = await Promise.all([businessActions(key), lastRuns()]);
-  if (!actions.length) return c.notFound();
+  const [actions, grades, runs] = await Promise.all([businessActions(key), gradesForBiz(key), lastRuns()]);
+  if (!actions.length && !grades.length) return c.notFound();
+  const name = tidy((actions[0] ?? grades[0]).biz_name);
   return c.html(
     <Layout
-      title={`${tidy(actions[0].biz_name)} 위생 기록`}
-      description={`${tidy(actions[0].biz_name)}의 행정처분 기록 ${actions.length}건`}
+      title={`${name} 위생 기록`}
+      description={
+        actions.length
+          ? `${name}의 행정처분 기록 ${actions.length}건`
+          : `${name}은(는) 식약처 위생등급을 받은 음식점이에요.`
+      }
       tab="hygiene"
       runs={runs}
     >
-      <BusinessPage actions={actions} />
+      <BusinessPage actions={actions} grades={grades} />
     </Layout>,
   );
 });
@@ -310,7 +336,7 @@ app.get("/healthz", async (c) => {
 
 /* ------------------------------ ingest ------------------------------ */
 
-const JOBS: Job[] = ["hygiene", "prices"];
+const JOBS: Job[] = ["hygiene", "prices", "grades"];
 
 // Neon Function Trigger(cron)가 POST /cron/:job 을 부른다. 헤더와 본문 검증은 parseTriggerDelivery가 한다.
 app.post("/cron/:job", async (c) => {

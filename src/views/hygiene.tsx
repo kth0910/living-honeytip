@@ -1,4 +1,4 @@
-import type { ActionRow, BizSummary, RegionCount } from "../data.js";
+import type { ActionRow, BizSummary, GradeRow, RegionCount } from "../data.js";
 import { SEVERITY_HINT, SEVERITY_LABEL, violationTags } from "../lib/severity.js";
 import { SIDO_ORDER } from "../lib/region.js";
 import { ago, koDate, longDate, periodText, splitViolation, tidy } from "./format.js";
@@ -10,6 +10,7 @@ export type HygieneQuery = {
   sev: number; // 0 폐업 정리 포함 | 1 위생 처분 전체 | 2 영업정지 이상 | 3 영업취소만
   period: string; // "1y" | "3y" | "all"
   scope: string; // "eat" 식당과 카페 | "all" 모든 식품업소
+  view: string; // "actions" 처분받은 곳 | "grade" 위생등급 받은 곳
   page: number;
 };
 
@@ -32,9 +33,172 @@ export function hygieneHref(q: HygieneQuery, over: Partial<HygieneQuery> = {}, p
   u.set("sev", String(s.sev));
   u.set("k", s.scope);
   u.set("p", s.period);
+  if (s.view === "grade") u.set("v", "grade");
   if (page > 1) u.set("page", String(page));
   return `/hygiene?${u}`;
 }
+
+/** 위생등급 표시. 공개 자료의 등급이 '적합'뿐이면 '위생등급 지정'으로 보여 준다 */
+export function gradeText(grade: string | null | undefined): string {
+  const g = (grade ?? "").trim();
+  if (!g || g === "적합") return "위생등급 지정";
+  return `위생등급 ${g}`;
+}
+
+export function GradeBadge(props: { grade?: string | null }) {
+  return (
+    <span class="label good" title="식품의약품안전처가 위생 관리 수준을 평가해 지정한 음식점이에요.">
+      <Icon name="shield-check" />
+      {gradeText(props.grade)}
+    </span>
+  );
+}
+
+function ViewSwitch(props: { q: HygieneQuery }) {
+  const { q } = props;
+  return (
+    <nav class="seg" aria-label="보기">
+      <a href={hygieneHref(q, { view: "actions" })} aria-current={q.view !== "grade" ? "page" : undefined}>
+        처분받은 곳
+      </a>
+      <a href={hygieneHref(q, { view: "grade" })} aria-current={q.view === "grade" ? "page" : undefined}>
+        위생등급 받은 곳
+      </a>
+    </nav>
+  );
+}
+
+export function GradeRowItem(props: { g: GradeRow }) {
+  const g = props.g;
+  return (
+    <a class="row" href={`/hygiene/b/${g.biz_key}`}>
+      <div class="main">
+        <div class="title">{tidy(g.biz_name)}</div>
+        <div class="sub">{[tidy(g.biz_type), tidy(g.addr)].filter(Boolean).join(", ")}</div>
+        <div class="labels">
+          <GradeBadge grade={g.grade} />
+        </div>
+        <div class="tiny t3" style="margin-top:8px">
+          {g.assigned_on ? `${koDate(g.assigned_on, { year: true, weekday: false })} 지정` : "지정일 정보 없음"}
+          {g.valid_to ? `, ${koDate(g.valid_to, { year: true, weekday: false })}까지` : ""}
+        </div>
+      </div>
+      <Icon name="chevron-right" class="chev" />
+    </a>
+  );
+}
+
+function GradeView(props: {
+  q: HygieneQuery;
+  regions: RegionCount[];
+  grades: { items: GradeRow[]; total: number };
+  stats: { active: number; recent30: number; expiring: number } | null;
+  pageSize: number;
+  regionLabel: string;
+}) {
+  const { q, grades } = props;
+  const pages = Math.ceil(grades.total / props.pageSize);
+  const searching = q.q.length > 0;
+  return (
+    <>
+      <div class="card">
+        <form action="/hygiene" method="get">
+          {q.q && <input type="hidden" name="q" value={q.q} />}
+          <input type="hidden" name="v" value="grade" />
+          <div class="filter-label">동네</div>
+          <Select name="r" label="동네" autosubmit>
+            <RegionOptions regions={props.regions} value={q.region} />
+          </Select>
+          <noscript>
+            <button class="btn secondary small" type="submit" style="margin-top:8px">
+              이 동네로 보기
+            </button>
+          </noscript>
+        </form>
+      </div>
+      {!searching && props.stats && (
+        <section class="card" aria-labelledby="gsum-h">
+          <SectionHead id="gsum-h" title={`${props.regionLabel} 위생등급 식당`} />
+          <div class="stats" style="grid-template-columns:repeat(2,1fr)">
+            <div class="stat">
+              <div class="v num">{props.stats.active.toLocaleString()}</div>
+              <div class="k">지금 위생등급이 있는 곳</div>
+            </div>
+            <div class="stat">
+              <div class="v num">{props.stats.recent30.toLocaleString()}</div>
+              <div class="k">최근 30일 새로 받은 곳</div>
+            </div>
+          </div>
+        </section>
+      )}
+      <section class="card flush" aria-labelledby="glist-h">
+        <SectionHead
+          id="glist-h"
+          title={
+            <>
+              {searching ? <>‘{q.q}’ 위생등급 식당</> : <>위생등급 받은 곳</>}{" "}
+              <span class="t3 num" style="font-size:16px;font-weight:600">
+                {grades.total.toLocaleString()}곳
+              </span>
+            </>
+          }
+        />
+        {grades.items.length === 0 ? (
+          <Empty icon="shield-check" title="이 조건에 맞는 위생등급 식당이 없어요">
+            <p>동네를 넓히거나 상호를 줄여서 찾아보세요.</p>
+          </Empty>
+        ) : (
+          <ul class="rows">
+            {grades.items.map((g) => (
+              <li>
+                <GradeRowItem g={g} />
+              </li>
+            ))}
+          </ul>
+        )}
+        {pages > 1 && (
+          <nav class="pager" aria-label="페이지">
+            {q.page > 1 && (
+              <a class="btn secondary small" href={hygieneHref(q, {}, q.page - 1)} aria-label="이전 페이지">
+                <Icon name="chevron-left" />
+                이전
+              </a>
+            )}
+            <span class="t3 small num">
+              {q.page} / {pages}
+            </span>
+            {q.page < pages && (
+              <a class="btn secondary small" href={hygieneHref(q, {}, q.page + 1)} aria-label="다음 페이지">
+                다음
+                <Icon name="chevron-right" />
+              </a>
+            )}
+          </nav>
+        )}
+      </section>
+      <section class="card">
+        <details class="more-info">
+          <summary>
+            <Icon name="info" />
+            위생등급제가 뭔가요
+            <Icon name="chevron-down" />
+          </summary>
+          <div class="body stack">
+            <p class="t2">
+              식품의약품안전처가 음식점의 위생 관리 수준을 평가해, 기준을 넘은 곳을 위생등급 음식점으로 지정하는
+              제도예요. 가게가 원해서 평가를 받고, 지정되면 2년 동안 유효해요.
+            </p>
+            <p class="small t3">
+              공개 자료에는 세부 등급(매우 우수, 우수, 좋음)이 빠져 있어서 지정 여부와 유효기간만 보여 드려요. 폐업했거나
+              기간이 지난 곳은 목록에서 뺐어요.
+            </p>
+          </div>
+        </details>
+      </section>
+    </>
+  );
+}
+
 
 export function RegionOptions(props: { regions: RegionCount[]; value: string; allLabel?: string }) {
   const bySido = new Map<string, RegionCount[]>();
@@ -129,7 +293,7 @@ function Filters(props: { q: HygieneQuery; regions: RegionCount[] }) {
   );
 }
 
-export function SearchBox(props: { value?: string; region?: string; placeholder?: string; id?: string }) {
+export function SearchBox(props: { value?: string; region?: string; placeholder?: string; id?: string; view?: string }) {
   const id = props.id ?? "hq";
   return (
     <form action="/hygiene" method="get" role="search">
@@ -147,6 +311,7 @@ export function SearchBox(props: { value?: string; region?: string; placeholder?
         />
       </label>
       {props.region && <input type="hidden" name="r" value={props.region} />}
+      {props.view === "grade" && <input type="hidden" name="v" value="grade" />}
     </form>
   );
 }
@@ -164,6 +329,7 @@ export function BizRow(props: { b: BizSummary }) {
         </div>
         <div class="labels">
           <SeverityBadge sev={b.max_severity} />
+          {b.has_grade && <GradeBadge />}
           {tags.length > 0
             ? tags.map((t) => <span class="label plain">{t}</span>)
             : b.max_severity > 0 && text && <span class="label plain clip">{text}</span>}
@@ -197,6 +363,10 @@ export function HygienePage(props: {
   ingestFailing?: boolean;
   regionLabel: string;
   periodLabel: string;
+  grades?: { items: GradeRow[]; total: number };
+  gradeStats?: { active: number; recent30: number; expiring: number } | null;
+  /** 처분 보기에서 가게 이름으로 찾을 때 함께 보여 줄 위생등급 식당 */
+  gradeMatches?: { items: GradeRow[]; total: number };
 }) {
   const { q, items, total } = props;
   const searching = q.q.length > 0;
@@ -205,10 +375,20 @@ export function HygienePage(props: {
   return (
     <>
       <h1 class="page-title">우리 동네 식당 위생</h1>
-      <p class="page-sub">위생 규정을 어겨 행정처분을 받은 식당과 카페를 찾아볼 수 있어요.</p>
-      <SearchBox value={q.q} region={q.region} />
+      <p class="page-sub">위생 규정을 어겨 처분받은 곳과 위생등급을 받은 곳을 찾아볼 수 있어요.</p>
+      <SearchBox value={q.q} region={q.region} view={q.view} />
+      <ViewSwitch q={q} />
 
-      {!props.hasData ? (
+      {q.view === "grade" && props.grades ? (
+        <GradeView
+          q={q}
+          regions={props.regions}
+          grades={props.grades}
+          stats={props.gradeStats ?? null}
+          pageSize={props.pageSize}
+          regionLabel={props.regionLabel}
+        />
+      ) : !props.hasData ? (
         <div class="card">
           {props.ingestFailing ? (
             <Empty icon="tool" title="위생 정보를 아직 받아오지 못했어요">
@@ -332,6 +512,34 @@ export function HygienePage(props: {
             )}
           </section>
 
+          {searching && props.gradeMatches && props.gradeMatches.items.length > 0 && (
+            <section class="card flush" aria-labelledby="gm-h">
+              <SectionHead
+                id="gm-h"
+                title={
+                  <>
+                    위생등급 받은 곳{" "}
+                    <span class="t3 num" style="font-size:16px;font-weight:600">
+                      {props.gradeMatches.total.toLocaleString()}곳
+                    </span>
+                  </>
+                }
+                more={
+                  props.gradeMatches.total > props.gradeMatches.items.length
+                    ? { href: hygieneHref(q, { view: "grade" }), label: "모두 보기" }
+                    : undefined
+                }
+              />
+              <ul class="rows">
+                {props.gradeMatches.items.map((g) => (
+                  <li>
+                    <GradeRowItem g={g} />
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
+
           <section class="card">
             <details class="more-info">
               <summary>
@@ -368,12 +576,18 @@ function mapLinks(name: string, addr: string | null) {
   ];
 }
 
-export function BusinessPage(props: { actions: ActionRow[] }) {
+export function BusinessPage(props: { actions: ActionRow[]; grades: GradeRow[] }) {
   const a = props.actions;
-  const head = a[0];
-  const max = Math.max(...a.map((x) => x.severity));
+  const gr = props.grades;
+  const head = a[0] ?? gr[0];
+  const max = a.length ? Math.max(...a.map((x) => x.severity)) : -1;
   const allTags = [...new Set(a.flatMap((x) => violationTags(x.violation)))].filter((t) => t !== "폐업 정리");
   const recent = a.filter((x) => x.action_date && Date.now() - Date.parse(x.action_date) < 365 * 86400_000).length;
+  const today = new Date().toISOString().slice(0, 10);
+  const activeGrade = gr.find(
+    (g) => !g.cancelled_on && (!g.valid_to || g.valid_to >= today) && !(g.biz_status ?? "").startsWith("폐업"),
+  );
+  const closed = gr.find((g) => (g.biz_status ?? "").startsWith("폐업"));
   return (
     <>
       <a class="small t3" href="/hygiene" style="display:inline-flex;align-items:center;gap:2px;margin-top:8px">
@@ -401,6 +615,48 @@ export function BusinessPage(props: { actions: ActionRow[] }) {
         </div>
       </section>
 
+      {closed && (
+        <Notice icon="archive" tone="warn">
+          <b>폐업한 가게예요.</b>
+          {closed.closed_on ? ` ${longDate(closed.closed_on)}에 문을 닫았어요.` : ""}
+        </Notice>
+      )}
+
+      {gr.length > 0 && (
+        <section class="card">
+          {activeGrade ? (
+            <>
+              <GradeBadge grade={activeGrade.grade} />
+              <p class="strong" style="font-size:19px;margin-top:10px;line-height:1.45">
+                식약처가 위생 관리 수준을 평가해 지정한 위생등급 식당이에요.
+              </p>
+              <p class="t2" style="margin-top:4px">
+                {activeGrade.assigned_on ? `${longDate(activeGrade.assigned_on)}에 지정됐고` : "지정됐고"}
+                {activeGrade.valid_to ? `, ${longDate(activeGrade.valid_to)}까지 유효해요.` : " 지금 유효해요."}
+              </p>
+            </>
+          ) : (
+            <>
+              <span class="label flat">
+                <Icon name="shield-check" />
+                위생등급 기간 끝남
+              </span>
+              <p class="t2" style="margin-top:10px">
+                예전에 위생등급을 받았지만 지금은 유효기간이 지났거나 취소됐어요.
+                {gr[0].valid_to ? ` 마지막 유효일은 ${longDate(gr[0].valid_to)}이에요.` : ""}
+              </p>
+            </>
+          )}
+        </section>
+      )}
+
+      {a.length === 0 ? (
+        <section class="card">
+          <Notice icon="shield-check" tone="good">
+            <b>공개된 위생 처분 기록이 없어요.</b> 처분이 공개되는 기간이 지난 기록은 보이지 않을 수 있어요.
+          </Notice>
+        </section>
+      ) : (
       <section class="card">
         {max === 0 ? (
           <Notice icon="shield-check" tone="good">
@@ -413,7 +669,7 @@ export function BusinessPage(props: { actions: ActionRow[] }) {
               공개된 처분이 {a.length}번 있어요{recent ? `. 최근 1년 동안 ${recent}번이에요.` : "."}
             </p>
             <p class="t2" style="margin-top:4px">
-              가장 최근은 {longDate(head.action_date)} {tidy(head.action_type) || "처분"}이에요.
+              가장 최근은 {longDate(a[0].action_date)} {tidy(a[0].action_type) || "처분"}이에요.
             </p>
             {allTags.length > 0 && (
               <div class="labels">
@@ -425,7 +681,9 @@ export function BusinessPage(props: { actions: ActionRow[] }) {
           </>
         )}
       </section>
+      )}
 
+      {a.length > 0 && (
       <section class="card flush">
         <SectionHead title="처분 기록" />
         <ol class="history">
@@ -458,6 +716,7 @@ export function BusinessPage(props: { actions: ActionRow[] }) {
           })}
         </ol>
       </section>
+      )}
       <p class="small t3" style="margin:12px 4px 0">
         상호와 주소가 같은 기록을 한 가게로 묶었어요. 이름이 같은 다른 지점이거나 주인이 바뀐 경우가 섞여 있을 수 있어요.
       </p>

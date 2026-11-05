@@ -107,6 +107,22 @@ await step("hygiene ingest (I2630 format) → Postgres with region parsing + sev
   assert.equal(r2.rows, 0);
 });
 
+await step("hygiene grades ingest (C004) without personal fields, linked to actions by business", async () => {
+  const r = await runJob("grades", "test");
+  assert.equal(r.status, "ok", JSON.stringify(r));
+  const [c] = await query<{ n: number; pii: number; linked: number }>(
+    `SELECT count(*)::int AS n,
+            count(*) FILTER (WHERE raw ? 'PRSDNT_NM' OR raw ? 'TELNO' OR raw ? 'WRKR_REG_NO')::int AS pii,
+            count(*) FILTER (WHERE EXISTS (SELECT 1 FROM hygiene_actions a WHERE a.biz_key = hygiene_grades.biz_key))::int AS linked
+       FROM hygiene_grades`,
+  );
+  assert.equal(c.n, 6);
+  assert.equal(c.pii, 0, "personal fields must not be stored");
+  assert.equal(c.linked, 1);
+  const again = await runJob("grades", "test"); // 하루 안에 다시 돌면 건너뜀
+  assert.equal(again.status, "ok");
+});
+
 await step("bad API keys are reported as errors in ingest_runs (no secrets leaked)", async () => {
   const saved = process.env.DATAKR_API_KEY;
   process.env.DATAKR_API_KEY = "wrong-key-123456";
@@ -160,6 +176,27 @@ await step("hygiene search, filters, region cookie, detail page", async () => {
   assert.match(allScope.text, /예시건강식품판매점/);
   const byName = await get("/hygiene?q=" + encodeURIComponent("예시건강식품"));
   assert.match(byName.text, /예시건강식품판매점/);
+  // 위생등급 보기: 지금 유효한 곳만(기간 지남, 폐업 제외)
+  const gv = await get("/hygiene?v=grade&r=" + encodeURIComponent("서울 강남구"));
+  assert.match(gv.text, /예시청결식당 본점/);
+  assert.match(gv.text, /가나다김밥 역삼본점/);
+  assert.ok(!gv.text.includes("예시만료식당"), "expired grade hidden");
+  assert.ok(!gv.text.includes("예시폐업카페"), "closed business hidden");
+  assert.match(gv.text, /위생등급 지정/);
+  // 처분 보기에서 이름으로 찾으면 위생등급 식당도 함께
+  const gs = await get("/hygiene?q=" + encodeURIComponent("예시청결"));
+  assert.match(gs.text, /위생등급 받은 곳/);
+  assert.match(gs.text, /예시청결카페/);
+  // 처분 기록 없이 등급만 있는 가게도 상세 페이지가 열림
+  const gkey = gv.text.match(/href="\/hygiene\/b\/([0-9a-f]{16})"[\s\S]{0,200}예시청결식당/)![1];
+  const gd = await get(`/hygiene/b/${gkey}`);
+  assert.equal(gd.status, 200);
+  assert.match(gd.text, /위생등급 식당이에요/);
+  assert.match(gd.text, /공개된 위생 처분 기록이 없어요/);
+  // 처분도 있고 등급도 있는 가게: 두 정보가 함께
+  const both = await get(`/hygiene/b/${key}`);
+  assert.match(both.text, /위생등급 식당이에요/);
+  assert.match(both.text, /처분 기록/);
   const bad = await get("/hygiene/b/zzzz");
   assert.equal(bad.status, 404);
 });

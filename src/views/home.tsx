@@ -1,6 +1,6 @@
-import type { BizSummary, PriceRow, RegionCount } from "../data.js";
+import type { BizSummary, GradeRow, PriceRow, RegionCount } from "../data.js";
 import { weeklyChange } from "../data.js";
-import { BizRow, RegionOptions, SearchBox } from "./hygiene.js";
+import { BizRow, GradeRowItem, RegionOptions, SearchBox } from "./hygiene.js";
 import { Move } from "./prices.js";
 import { itemSub, itemTitle, koDate, won } from "./format.js";
 import { Icon, SectionHead, Select, Tile } from "./ui.js";
@@ -9,6 +9,7 @@ export function HomePage(props: {
   region: string;
   regions: RegionCount[];
   recent: BizSummary[];
+  graded: { items: GradeRow[]; total: number };
   priceDate: string | null;
   drops: PriceRow[];
   rises: PriceRow[];
@@ -33,7 +34,7 @@ export function HomePage(props: {
               <Tile icon="bowl" color="red" />
               <div class="main">
                 <div class="title">식당 위생 체크</div>
-                <div class="sub">영업정지 같은 처분을 받은 식당을 동네별로 봐요</div>
+                <div class="sub">처분받은 식당과 위생등급을 받은 식당을 동네별로 봐요</div>
               </div>
               <Icon name="chevron-right" class="chev" />
             </a>
@@ -76,6 +77,26 @@ export function HomePage(props: {
                 </li>
               ),
             )}
+          </ul>
+        </section>
+      )}
+
+      {props.graded.items.length > 0 && (
+        <section class="card flush" aria-labelledby="h-grade">
+          <SectionHead
+            id="h-grade"
+            title={`${regionLabel} 위생등급 식당`}
+            more={{ href: `/hygiene?v=grade${props.region ? `&r=${encodeURIComponent(props.region)}` : ""}`, label: "더 보기" }}
+          />
+          <p class="small t3" style="padding:0 20px 4px">
+            식약처가 위생 관리 수준을 평가해 지정한 곳 {props.graded.total.toLocaleString()}곳
+          </p>
+          <ul class="rows">
+            {props.graded.items.map((g) => (
+              <li>
+                <GradeRowItem g={g} />
+              </li>
+            ))}
           </ul>
         </section>
       )}

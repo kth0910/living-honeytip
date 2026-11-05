@@ -26,8 +26,97 @@ export type RegionCount = { sido: string; sigungu: string | null; n: number };
 export async function hygieneRegions(): Promise<RegionCount[]> {
   return query<RegionCount>(
     `SELECT sido, sigungu, count(DISTINCT biz_key)::int AS n
-       FROM hygiene_actions WHERE sido IS NOT NULL
+       FROM (SELECT sido, sigungu, biz_key FROM hygiene_actions WHERE sido IS NOT NULL
+             UNION ALL
+             SELECT sido, sigungu, biz_key FROM hygiene_grades WHERE sido IS NOT NULL) t
       GROUP BY sido, sigungu ORDER BY sido, sigungu NULLS FIRST`,
+  );
+}
+
+/* ----------------------------- 위생등급 ----------------------------- */
+
+/** 지금 유효한 위생등급: 취소되지 않았고, 기간 안이고, 폐업하지 않은 곳 */
+export function activeGrade(alias = ""): string {
+  const a = alias ? `${alias}.` : "";
+  return `${a}cancelled_on IS NULL AND (${a}valid_to IS NULL OR ${a}valid_to >= current_date)
+    AND coalesce(${a}biz_status, '') NOT LIKE '폐업%'`;
+}
+
+export type GradeRow = {
+  biz_key: string;
+  biz_name: string;
+  biz_type: string | null;
+  addr: string | null;
+  grade: string | null;
+  grade_rank: number;
+  assigned_on: string | null;
+  valid_to: string | null;
+  cancelled_on: string | null;
+  biz_status: string | null;
+  closed_on: string | null;
+};
+
+function gradeWhere(f: { q?: string; sido?: string | null; sigungu?: string | null }, params: unknown[]): string {
+  const where: string[] = [activeGrade()];
+  for (const t of (f.q ?? "").trim().split(/\s+/).filter(Boolean).slice(0, 5)) {
+    params.push(`%${t.replace(/[\\%_]/g, (m) => "\\" + m)}%`);
+    where.push(`(biz_name ILIKE $${params.length} OR addr ILIKE $${params.length})`);
+  }
+  if (f.sido) {
+    params.push(f.sido);
+    where.push(`sido = $${params.length}`);
+  }
+  if (f.sigungu) {
+    params.push(f.sigungu);
+    where.push(`sigungu = $${params.length}`);
+  }
+  return where.join(" AND ");
+}
+
+export async function searchGrades(f: {
+  q?: string;
+  sido?: string | null;
+  sigungu?: string | null;
+  page?: number;
+  pageSize?: number;
+}): Promise<{ items: GradeRow[]; total: number }> {
+  const params: unknown[] = [];
+  const where = gradeWhere(f, params);
+  const pageSize = f.pageSize ?? 20;
+  params.push(pageSize, ((f.page ?? 1) - 1) * pageSize);
+  const rows = await query<GradeRow & { total: number }>(
+    `WITH g AS (
+       SELECT DISTINCT ON (biz_key) biz_key, biz_name, biz_type, addr, grade, grade_rank, assigned_on, valid_to,
+              cancelled_on, biz_status, closed_on
+         FROM hygiene_grades WHERE ${where}
+        ORDER BY biz_key, assigned_on DESC NULLS LAST
+     )
+     SELECT g.*, count(*) OVER ()::int AS total FROM g
+      ORDER BY grade_rank DESC, assigned_on DESC NULLS LAST, biz_name
+      LIMIT $${params.length - 1} OFFSET $${params.length}`,
+    params,
+  );
+  return { items: rows, total: rows[0]?.total ?? 0 };
+}
+
+export async function gradeStats(f: { sido?: string | null; sigungu?: string | null }) {
+  const params: unknown[] = [];
+  const where = gradeWhere(f, params);
+  const [r] = await query<{ active: number; recent30: number; expiring: number }>(
+    `SELECT count(DISTINCT biz_key)::int AS active,
+            count(DISTINCT biz_key) FILTER (WHERE assigned_on >= current_date - 30)::int AS recent30,
+            count(DISTINCT biz_key) FILTER (WHERE valid_to < current_date + 60)::int AS expiring
+       FROM hygiene_grades WHERE ${where}`,
+    params,
+  );
+  return r ?? { active: 0, recent30: 0, expiring: 0 };
+}
+
+export async function gradesForBiz(bizKey: string): Promise<GradeRow[]> {
+  return query<GradeRow>(
+    `SELECT biz_key, biz_name, biz_type, addr, grade, grade_rank, assigned_on, valid_to, cancelled_on, biz_status, closed_on
+       FROM hygiene_grades WHERE biz_key = $1 ORDER BY assigned_on DESC NULLS LAST`,
+    [bizKey],
   );
 }
 
@@ -41,6 +130,7 @@ export type BizSummary = {
   last_date: string | null;
   last_type: string | null;
   last_violation: string | null;
+  has_grade?: boolean;
 };
 
 export type HygieneFilter = {
@@ -103,7 +193,8 @@ export async function searchBusinesses(f: HygieneFilter): Promise<{ items: BizSu
        SELECT DISTINCT ON (biz_key) biz_key, biz_name, biz_type, addr, action_type AS last_type, violation AS last_violation
          FROM matched ORDER BY biz_key, action_date DESC NULLS LAST, severity DESC
      )
-     SELECT b.*, l.biz_name, l.biz_type, l.addr, l.last_type, l.last_violation, count(*) OVER ()::int AS total
+     SELECT b.*, l.biz_name, l.biz_type, l.addr, l.last_type, l.last_violation, count(*) OVER ()::int AS total,
+            EXISTS (SELECT 1 FROM hygiene_grades g WHERE g.biz_key = b.biz_key AND ${activeGrade("g")}) AS has_grade
        FROM biz b JOIN latest l USING (biz_key)
       ORDER BY b.last_date DESC NULLS LAST, b.max_severity DESC, l.biz_name
       LIMIT $${pl} OFFSET $${po}`,

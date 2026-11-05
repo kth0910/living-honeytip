@@ -306,3 +306,10 @@ footer a { text-decoration: underline; text-underline-offset: 3px; }
 .toolbar .search { background: var(--fill); box-shadow: none; height: 46px; }
 .toolbar .select select { height: 46px; }
 .toolbar .two { display: grid; grid-template-columns: 1fr 132px; gap: 8px; margin-top: 10px; }
+
+/* 보기 전환 (두 갈래 탭) */
+.seg { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 4px; padding: 4px; margin-top: 12px;
+  background: var(--fill); border-radius: var(--r-md); }
+.seg a { display: flex; align-items: center; justify-content: center; height: 42px; border-radius: 11px;
+  font-weight: 700; font-size: 15px; color: var(--text-3); }
+.seg a[aria-current="page"] { background: var(--surface); color: var(--text); box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08); }

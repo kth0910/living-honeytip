@@ -68,6 +68,13 @@ export async function fetchPage(
   throw new FoodSafetyError(code, redact(msg));
 }
 
+/** 같은 가게를 묶는 키: 인허가번호가 있으면 그것으로, 없으면 상호와 주소로. 위생등급 자료도 같은 키를 쓴다. */
+export function makeBizKey(name: string, addr: string | null | undefined, licenseNo: string | null | undefined): string {
+  const nameNorm = name.replace(/\s+/g, "").toLowerCase();
+  const addrNorm = (addr ?? "").replace(/\s+/g, "");
+  return sha1(licenseNo ? `lic:${licenseNo}` : `${nameNorm}|${addrNorm}`).slice(0, 16);
+}
+
 export function normalizeRow(row: Row) {
   const bizName = pick(row, ["PRCSCITYPOINT_BSSHNM", "BSSH_NM", "BSSHNM"]) ?? "(상호 미상)";
   const addr = pick(row, ["ADDR", "SITE_ADDR", "LOCPLC"]) ?? null;
@@ -83,7 +90,7 @@ export function normalizeRow(row: Row) {
   const { sido, sigungu } = parseRegion(addr);
   const nameNorm = bizName.replace(/\s+/g, "").toLowerCase();
   const addrNorm = (addr ?? "").replace(/\s+/g, "");
-  const bizKey = sha1(licenseNo ? `lic:${licenseNo}` : `${nameNorm}|${addrNorm}`).slice(0, 16);
+  const bizKey = makeBizKey(bizName, addr, licenseNo);
   const sourceKey = sha1(JSON.stringify([nameNorm, addrNorm, actionDate, actionType, violation, licenseNo]));
   return {
     sourceKey,

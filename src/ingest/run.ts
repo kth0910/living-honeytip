@@ -2,8 +2,9 @@ import { ensureSchema, query } from "../db.js";
 import { redact } from "../lib/util.js";
 import { ingestHygiene } from "./hygiene.js";
 import { ingestPrices } from "./prices.js";
+import { ingestGrades } from "./grades.js";
 
-export type Job = "hygiene" | "prices";
+export type Job = "hygiene" | "prices" | "grades";
 
 export async function runJob(job: Job, trigger: string, opts: { budgetMs?: number } = {}) {
   await ensureSchema();
@@ -12,7 +13,8 @@ export async function runJob(job: Job, trigger: string, opts: { budgetMs?: numbe
     [job, trigger],
   );
   try {
-    const result = job === "hygiene" ? await ingestHygiene(opts) : await ingestPrices(opts);
+    const result =
+      job === "hygiene" ? await ingestHygiene(opts) : job === "grades" ? await ingestGrades(opts) : await ingestPrices(opts);
     await query(
       `UPDATE ingest_runs SET finished_at = now(), status = $2, rows = $3, message = $4 WHERE id = $1`,
       [run.id, result.partial ? "partial" : "ok", result.rows, redact(result.message).slice(0, 2000)],

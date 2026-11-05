@@ -121,4 +121,35 @@ UPDATE hygiene_actions SET
   action_detail = nullif(btrim(coalesce(raw->>'DSPSCN', raw->>'DSPS_CN', '')), '');
 `,
   },
+  {
+    // 음식점 위생등급 지정 현황 (식품안전나라 C004). 개인정보(대표자, 전화, 사업자번호)는 저장하지 않는다.
+    id: "006_hygiene_grades",
+    sql: `
+CREATE TABLE hygiene_grades (
+  grade_no      text PRIMARY KEY,               -- 위생등급 지정번호
+  license_no    text,
+  biz_key       text NOT NULL,                  -- hygiene_actions.biz_key 와 같은 규칙
+  biz_name      text NOT NULL,
+  biz_type      text,
+  addr          text,
+  sido          text,
+  sigungu       text,
+  grade         text,                           -- 매우 우수, 우수, 좋음 등 원문
+  grade_rank    smallint NOT NULL DEFAULT 0,    -- 3 매우 우수, 2 우수, 1 좋음, 0 그 밖
+  assigned_on   date,
+  valid_from    date,
+  valid_to      date,
+  cancelled_on  date,
+  biz_status    text,                           -- 정상, 폐업 등
+  closed_on     date,
+  agency        text,
+  raw           jsonb NOT NULL,
+  fetched_at    timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX hygiene_grades_biz_key_idx ON hygiene_grades (biz_key);
+CREATE INDEX hygiene_grades_region_idx ON hygiene_grades (sido, sigungu, grade_rank DESC);
+CREATE INDEX hygiene_grades_name_trgm ON hygiene_grades USING gin (biz_name gin_trgm_ops);
+CREATE INDEX hygiene_grades_addr_trgm ON hygiene_grades USING gin (addr gin_trgm_ops);
+`,
+  },
 ];

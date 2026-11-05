@@ -34,6 +34,13 @@ export default defineConfig({
       cron: "20 18 * * *",
       functionPath: "/cron/hygiene",
     },
+    // 03:50 KST, 위생등급 지정 현황 (처분 수집 뒤)
+    "grades-daily": {
+      type: "schedule",
+      function: "web",
+      cron: "50 18 * * *",
+      functionPath: "/cron/grades",
+    },
     // 10:40 / 19:40 KST — 가격 조사 결과가 반영된 뒤 수집
     "prices-twice-daily": {
       type: "schedule",

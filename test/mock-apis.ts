@@ -33,6 +33,26 @@ function rnd(seed: number) {
   return () => ((s = (s * 1664525 + 1013904223) >>> 0) / 2 ** 32);
 }
 
+// 위생등급 지정 현황(C004) 가짜 자료. 등급은 실제 공개 자료처럼 모두 '적합'.
+function makeGradeRows() {
+  const rows: Record<string, string>[] = [];
+  const add = (name: string, addr: string, type: string, from: string, to: string, status = "정상", closed = "") =>
+    rows.push({
+      BSSH_NM: name, ADDR: addr, INDUTY_NM: type, HG_ASGN_LV: "적합", HG_ASGN_YMD: from, ASGN_FROM: from,
+      ASGN_TO: to, ASGN_CANCEL_YMD: "", CLSBIZ_DVS_CD_NM: status, CLSBIZ_DT: closed, LCNS_NO: "",
+      HG_ASGN_NO: `제HG${String(rows.length + 1).padStart(9, "0")}호`, HG_ASGN_NM: "식품의약품안전처",
+      PRSDNT_NM: "홍길동", TELNO: "02-000-0000", WRKR_REG_NO: "1234567890", INSTT_CD_NM: "", CHNG_DT: "",
+    });
+  add("예시청결식당 본점", "서울특별시 강남구 예시로90길 1", "일반음식점", "20260101", "20271231");
+  add("예시청결카페", "서울특별시 마포구 예시로91길 2", "휴게음식점", "20261020", "20281019");
+  add("예시청결분식", "부산광역시 해운대구 예시로92길 3", "일반음식점", "20250301", "20270228");
+  add("예시만료식당", "서울특별시 강남구 예시로93길 4", "일반음식점", "20230101", "20241231");
+  add("예시폐업카페", "서울특별시 강남구 예시로94길 5", "휴게음식점", "20260101", "20271231", "폐업(자진)", "20260901");
+  // 처분 기록도 있는 가게(상호와 주소가 같아 한 가게로 묶여야 함)
+  add("가나다김밥 역삼본점", "서울특별시 강남구 예시로1길 1", "일반음식점", "20250601", "20270531");
+  return rows;
+}
+
 function makeHygieneRows() {
   const rows: Record<string, string>[] = [];
   const r = rnd(42);
@@ -152,18 +172,19 @@ function priceRows(ymd: string) {
 
 export function startMock(port: number): Promise<Server> {
   const hygiene = makeHygieneRows();
+  const grades = makeGradeRows();
   const calls: string[] = [];
   const server = createServer((req, res) => {
     const url = new URL(req.url!, `http://localhost:${port}`);
     calls.push(url.pathname + url.search);
     res.setHeader("content-type", "application/json; charset=utf-8");
     // 식품안전나라: /api/{key}/I2630/json/{start}/{end}[/FILTER=V]
-    const m = url.pathname.match(/^\/api\/([^/]+)\/(I0470|I2630)\/json\/(\d+)\/(\d+)(?:\/(.*))?$/);
+    const m = url.pathname.match(/^\/api\/([^/]+)\/(I0470|I2630|C004)\/json\/(\d+)\/(\d+)(?:\/(.*))?$/);
     if (m) {
       const svc = m[2];
       if (m[1] !== "test-food-key") return res.end(JSON.stringify({ [svc]: { RESULT: { CODE: "INFO-100", MSG: "인증키가 유효하지 않습니다." } } }));
-      if (svc !== "I0470") return res.end(JSON.stringify({ [svc]: { RESULT: { CODE: "INFO-110", MSG: "활용신청 내역이 없습니다." } } }));
-      let rows = hygiene;
+      if (svc === "I2630") return res.end(JSON.stringify({ [svc]: { RESULT: { CODE: "INFO-110", MSG: "활용신청 내역이 없습니다." } } }));
+      let rows = svc === "C004" ? grades : hygiene;
       if (m[5]) {
         const [k, v] = decodeURIComponent(m[5]).split("=");
         rows = rows.filter((r) => r[k] === v);
