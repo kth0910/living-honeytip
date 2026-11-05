@@ -127,7 +127,17 @@ app.get("/", async (c) => {
     searchBusinesses({ sido, sigungu, sinceDays: 365, eatOnly: true, pageSize: 5 }),
     lastRuns(),
     latestPriceDate(),
-    searchGrades({ sido, sigungu, pageSize: 3 }),
+    searchGrades({ sido, sigungu, pageSize: 15 }).then((g) => {
+      // 같은 건물(휴게소, 푸드코트)의 여러 매장이 한꺼번에 나오지 않게 주소로 한 곳씩만
+      const seen = new Set<string>();
+      const items = g.items.filter((x) => {
+        const k = (x.addr ?? x.biz_name).replace(/\s*\(.*$/, "");
+        if (seen.has(k)) return false;
+        seen.add(k);
+        return true;
+      });
+      return { ...g, items: items.slice(0, 3) };
+    }),
     searchBenefits({ sido, sigungu, pageSize: 3 }),
   ]);
   let drops: any[] = [];

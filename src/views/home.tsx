@@ -26,7 +26,7 @@ export function HomePage(props: {
         <br />
         무엇을 살까요?
       </h1>
-      <p class="page-sub">우리 동네 식당 위생 기록과 이번 주 장보기 물가를 공공데이터로 알려드려요.</p>
+      <p class="page-sub">우리 동네 식당 위생, 받을 수 있는 혜택, 장보기 물가를 공공데이터로 알려드려요.</p>
 
       <SearchBox id="home-q" region={props.region} placeholder="가게 이름으로 위생 기록 찾기" />
 
@@ -57,7 +57,7 @@ export function HomePage(props: {
               <Tile icon="basket" color="green" />
               <div class="main">
                 <div class="title">이번 주 장보기 시세</div>
-                <div class="sub">채소, 과일, 고기, 생선 값이 지난주보다 올랐는지 봐요</div>
+                <div class="sub">채소와 생필품이 지난번보다 올랐는지, 어디가 싼지 봐요</div>
               </div>
               <Icon name="chevron-right" class="chev" />
             </a>
