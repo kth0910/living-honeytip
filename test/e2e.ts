@@ -166,6 +166,8 @@ await step("goods ingest (XML) and pages: averages, store types, cheapest stores
   assert.equal(p.status, 200);
   assert.match(p.text, /예시 흰우유\(1L\)/);
   assert.match(p.text, /가게에 따라 평균/);
+  assert.match(p.text, /data-cat-chip="면류, 즉석식품"/);
+  assert.ok(!p.text.includes("·"), "no raw middle dot even in attributes");
   assert.match(p.text, /data-price="\d+"/);
   const item = await get("/prices/goods/224");
   assert.equal(item.status, 200);

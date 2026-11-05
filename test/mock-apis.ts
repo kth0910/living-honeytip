@@ -203,7 +203,7 @@ function goodsXml(path: string, sp: URLSearchParams): string {
     const cc = sp.get("classCode");
     const T = "iros.openapi.service.vo.stdInfoVO";
     if (cc === "AL") return wrap([
-      vo(T, { code: "030200000", codeName: "가공식품" }), vo(T, { code: "030201000", codeName: "면류", highCode: "030200000" }),
+      vo(T, { code: "030200000", codeName: "가공식품" }), vo(T, { code: "030201000", codeName: "면류·즉석식품", highCode: "030200000" }),
       vo(T, { code: "030201001", codeName: "라면", highCode: "030201000" }), vo(T, { code: "030202000", codeName: "유제품", highCode: "030200000" }),
       vo(T, { code: "030202001", codeName: "우유", highCode: "030202000" }),
     ].join(""));

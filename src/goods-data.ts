@@ -1,3 +1,4 @@
+import { tidy } from "./views/format.js";
 // 생필품(참가격) 조회
 import { query } from "./db.js";
 
@@ -36,6 +37,9 @@ export async function goodsList(day: string, prev: string | null, region = "0000
       WHERE s.survey_day = $1 AND s.region = $2
       ORDER BY g.top_name, g.mid_name, g.name`,
     [day, region, prev],
+  ).then((rows) =>
+    // 분류 이름은 칩, 주소(?c=), data 속성에도 쓰이므로 원문 가운뎃점을 미리 정리
+    rows.map((r) => ({ ...r, top_name: r.top_name && tidy(r.top_name), mid_name: r.mid_name && tidy(r.mid_name) })),
   );
 }
 
