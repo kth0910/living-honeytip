@@ -18,6 +18,8 @@ Object.assign(process.env, {
   FOODSAFTYKOREA_OPEN_API: "test-food-key",
   DATAKR_API_KEY: "test-datago-key",
   ADMIN_TOKEN: "test-admin-token",
+  BENEFITS_API_BASE: `http://127.0.0.1:${MOCK_PORT}/api/gov24/v3`,
+  GOODS_API_BASE: `http://127.0.0.1:${MOCK_PORT}/B551919/ProductPriceInfoService`,
 });
 delete process.env.KAMIS_CERT_KEY;
 delete process.env.KAMIS_CERT_ID;
@@ -121,6 +123,59 @@ await step("hygiene grades ingest (C004) without personal fields, linked to acti
   assert.equal(c.linked, 1);
   const again = await runJob("grades", "test"); // 하루 안에 다시 돌면 건너뜀
   assert.equal(again.status, "ok");
+});
+
+await step("benefits ingest and pages: region, age, field, detail", async () => {
+  const r = await runJob("benefits", "test");
+  assert.equal(r.status, "ok", JSON.stringify(r));
+  const [c] = await query<{ n: number; local: number }>(`SELECT count(*)::int AS n, count(sido)::int AS local FROM benefits`);
+  assert.equal(c.n, 5);
+  assert.equal(c.local, 3);
+  const all = await get("/benefits");
+  assert.equal(all.status, 200);
+  assert.match(all.text, /많이 찾는 혜택/);
+  assert.match(all.text, /근로, 자녀장려금/); // 원문 가운뎃점은 쉼표로
+  // 강남구에 사는 30대: 전국 혜택 + 서울 + 강남구, 마포구 어르신 교통비는 빠짐
+  const gn = await get("/benefits?r=" + encodeURIComponent("서울 강남구") + "&age=30");
+  assert.match(gn.text, /강남구 출산축하금/);
+  assert.match(gn.text, /서울시 청년수당/);
+  assert.ok(!gn.text.includes("마포구 어르신 교통비"));
+  const list = await get("/benefits?list=local&r=" + encodeURIComponent("서울 강남구"));
+  assert.match(list.text, /강남구 출산축하금/);
+  assert.ok(!list.text.includes("청년월세 특별지원"), "local list has only local benefits");
+  const field = await get("/benefits?list=popular&f=" + encodeURIComponent("주거·자립"));
+  assert.match(field.text, /청년월세 특별지원/);
+  assert.ok(!field.text.includes("서울시 청년수당"));
+  const d = await get("/benefits/100000000001");
+  assert.equal(d.status, 200);
+  assert.match(d.text, /정부24에서 자세히 보고 신청하기/);
+  assert.match(d.text, /19세부터 34세까지/);
+  assert.match(d.text, /<ul class="bullets">/);
+  assert.equal((await get("/benefits/nope!")).status, 404);
+});
+
+await step("goods ingest (XML) and pages: averages, store types, cheapest stores", async () => {
+  const r = await runJob("goods", "test");
+  assert.equal(r.status, "ok", JSON.stringify(r));
+  const [c] = await query<{ days: number; stats: number }>(
+    `SELECT count(DISTINCT survey_day)::int AS days, count(*)::int AS stats FROM goods_stats WHERE region = '0000'`,
+  );
+  assert.equal(c.days, 2);
+  assert.equal(c.stats, 4);
+  const p = await get("/prices/goods");
+  assert.equal(p.status, 200);
+  assert.match(p.text, /예시 흰우유\(1L\)/);
+  assert.match(p.text, /가게에 따라 평균/);
+  assert.match(p.text, /data-price="\d+"/);
+  const item = await get("/prices/goods/224");
+  assert.equal(item.status, 200);
+  assert.match(item.text, /가장 싸게 판 가게/);
+  assert.match(item.text, /예시마트 강남점/);
+  assert.match(item.text, /대형마트 평균/);
+  const seoul = await get("/prices/goods/553?r=" + encodeURIComponent("서울"));
+  assert.equal(seoul.status, 200);
+  assert.ok(!seoul.text.includes("예시백화점 부산점"), "region filter on stores");
+  assert.equal((await get("/prices/goods/abc")).status, 404);
 });
 
 await step("bad API keys are reported as errors in ingest_runs (no secrets leaked)", async () => {
@@ -252,7 +307,7 @@ await step("cron route requires a trigger delivery; admin route requires token",
 
 await step("design: no emoji, middle dot, dash or arrow glyphs in rendered pages; assets served", async () => {
   const BAD = /[·—–←→↗↘▲▼★☆✓✔•…]|[\u{1F000}-\u{1FAFF}]|[\u2600-\u27BF]|\uFE0F/u;
-  const pages = ["/", "/hygiene", "/hygiene?q=" + encodeURIComponent("김밥"), "/prices", "/about", "/nope"];
+  const pages = ["/", "/hygiene", "/hygiene?q=" + encodeURIComponent("김밥"), "/hygiene?v=grade", "/prices", "/prices/goods", "/prices/goods/224", "/benefits", "/benefits?list=popular", "/benefits/100000000002", "/about", "/nope"];
   const s0 = await get("/prices");
   pages.push(decodeURIComponent(s0.text.match(/\/prices\/item\?k=[^"]+/)![0]).replace(/&amp;/g, "&"));
   const h0 = await get("/hygiene?q=" + encodeURIComponent("가나다김밥"));

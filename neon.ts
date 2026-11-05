@@ -41,6 +41,20 @@ export default defineConfig({
       cron: "50 18 * * *",
       functionPath: "/cron/grades",
     },
+    // 05:10 KST, 공공서비스(혜택) 목록
+    "benefits-daily": {
+      type: "schedule",
+      function: "web",
+      cron: "10 20 * * *",
+      functionPath: "/cron/benefits",
+    },
+    // 매일 14:20 KST, 생필품 가격 (조사는 2주마다라 대부분 확인만 하고 끝남)
+    "goods-daily": {
+      type: "schedule",
+      function: "web",
+      cron: "20 5 * * *",
+      functionPath: "/cron/goods",
+    },
     // 10:40 / 19:40 KST — 가격 조사 결과가 반영된 뒤 수집
     "prices-twice-daily": {
       type: "schedule",

@@ -31,6 +31,10 @@ import { HomePage, AboutPage } from "./views/home.js";
 import { fetchPage as fetchFoodSafetyPage } from "./ingest/hygiene.js";
 import { redact } from "./lib/util.js";
 import { tidy } from "./views/format.js";
+import { benefitById, benefitCounts, benefitFields, benefitRegions, searchBenefits } from "./benefits-data.js";
+import { BenefitsPage, BenefitDetailPage, type BenefitQuery } from "./views/benefits.js";
+import { goodsDays, goodsDetail, goodsList, goodsRegions } from "./goods-data.js";
+import { GoodsItemPage, GoodsPage } from "./views/goods.js";
 
 const app = new Hono();
 const YEAR = 365 * 86400;
@@ -118,12 +122,13 @@ function rememberedPriceRegion(c: Context): string {
 app.get("/", async (c) => {
   const region = rememberedHygieneRegion(c);
   const { sido, sigungu } = splitRegionParam(region);
-  const [regions, recent, runs, date, goodOnes] = await Promise.all([
+  const [regions, recent, runs, date, goodOnes, benefits] = await Promise.all([
     hygieneRegions(),
     searchBusinesses({ sido, sigungu, sinceDays: 365, eatOnly: true, pageSize: 5 }),
     lastRuns(),
     latestPriceDate(),
     searchGrades({ sido, sigungu, pageSize: 3 }),
+    searchBenefits({ sido, sigungu, pageSize: 3 }),
   ]);
   let drops: any[] = [];
   let rises: any[] = [];
@@ -139,6 +144,7 @@ app.get("/", async (c) => {
         regions={regions}
         recent={recent.items}
         graded={goodOnes}
+        benefits={benefits}
         priceDate={date}
         drops={drops}
         rises={rises}
@@ -274,6 +280,52 @@ app.get("/prices", async (c) => {
   );
 });
 
+app.get("/prices/goods", async (c) => {
+  const rParam = c.req.query("r");
+  const { latest, prev } = await goodsDays();
+  let region = rParam && /^[가-힣]{2,4}$/.test(rParam) ? rParam : "0000";
+  let rows = latest ? await goodsList(latest, prev, region) : [];
+  if (latest && !rows.length && region !== "0000") {
+    region = "0000";
+    rows = await goodsList(latest, prev, region);
+  }
+  const [regions, runs] = await Promise.all([latest ? goodsRegions(latest) : Promise.resolve([]), lastRuns()]);
+  const sParam = c.req.query("s") ?? "cat";
+  return c.html(
+    <Layout title="생필품 가격" description="라면, 우유, 세제 같은 생필품이 가게마다 얼마인지 비교해 보세요." tab="prices" runs={runs}>
+      <GoodsPage
+        rows={rows}
+        day={latest}
+        prev={prev}
+        region={region}
+        regions={regions}
+        init={{
+          c: (c.req.query("c") ?? "").slice(0, 30),
+          q: (c.req.query("q") ?? "").slice(0, 30),
+          s: ["cat", "drop", "rise", "cheap", "pricey", "name"].includes(sParam) ? sParam : "cat",
+          page: Math.min(100, Math.max(1, Number(c.req.query("pg")) || 1)),
+        }}
+      />
+    </Layout>,
+  );
+});
+
+app.get("/prices/goods/:id", async (c) => {
+  const id = c.req.param("id");
+  if (!/^\d{1,8}$/.test(id)) return c.notFound();
+  const rParam = c.req.query("r");
+  const region = rParam && /^[가-힣]{2,4}$/.test(rParam) ? rParam : "0000";
+  const { latest, prev } = await goodsDays();
+  if (!latest) return c.notFound();
+  const [d, runs] = await Promise.all([goodsDetail(id, latest, prev, region), lastRuns()]);
+  if (!d) return c.notFound();
+  return c.html(
+    <Layout title={`${tidy(d.row.name)} 가격`} description={`${tidy(d.row.name)}이(가) 가게마다 얼마인지 비교해 보세요.`} tab="prices" runs={runs}>
+      <GoodsItemPage row={d.row} cheapest={d.cheapest} byRegion={d.byRegion} day={latest} region={region} />
+    </Layout>,
+  );
+});
+
 app.get("/prices/item", async (c) => {
   const k = c.req.query("k") ?? "";
   const parts = k.split("~");
@@ -297,6 +349,80 @@ app.get("/prices/item", async (c) => {
   return c.html(
     <Layout title={`${tidy(r.item_name)} 가격`} description={`${tidy(r.item_name)}의 이번 주 소매가격과 지난주보다 얼마나 올랐는지 알려드려요.`} tab="prices" runs={runs}>
       <PriceItemPage r={r} history={history} regionName={regionName} regionCode={region} byRegion={byRegion} />
+    </Layout>,
+  );
+});
+
+app.get("/benefits", async (c) => {
+  const q = (c.req.query("q") ?? "").trim().slice(0, 40);
+  const region = rememberedHygieneRegion(c);
+  const ageParam = c.req.query("age");
+  let age: number | null = null;
+  if (ageParam !== undefined) {
+    age = ageParam === "" ? null : Math.min(120, Math.max(0, Number(ageParam) || 0));
+    if (age === null) deleteCookie(c, "age", { path: "/" });
+    else setCookie(c, "age", String(age), { path: "/", maxAge: YEAR, sameSite: "Lax" });
+  } else {
+    const ck = getCookie(c, "age");
+    age = ck && /^\d{1,3}$/.test(ck) ? Number(ck) : null;
+  }
+  const field = (c.req.query("f") ?? "").slice(0, 20);
+  const whoParam = c.req.query("who") ?? "";
+  const who = ["개인", "가구", "소상공인"].includes(whoParam) ? whoParam : "";
+  const listParam = c.req.query("list") ?? "";
+  const list = ["popular", "new", "local"].includes(listParam) ? listParam : "";
+  const page = Math.min(300, Math.max(1, Number(c.req.query("page")) || 1));
+  const { sido, sigungu } = splitRegionParam(region);
+  const b: BenefitQuery = { q, region, age, field, who, list, page };
+  const base = { q, sido, sigungu, age, field: field || null, who: who || null };
+  const pageSize = 20;
+  const browsing = !q && !list;
+  const [regions, fields, counts, runs, any, popular, fresh, local, listed] = await Promise.all([
+    benefitRegions(),
+    benefitFields(),
+    benefitCounts(base),
+    lastRuns(),
+    query<{ ok: boolean }>(`SELECT EXISTS (SELECT 1 FROM benefits) AS ok`),
+    browsing ? searchBenefits({ ...base, pageSize: 5 }).then((r) => r.items) : Promise.resolve(undefined),
+    browsing ? searchBenefits({ ...base, newDays: 60, sort: "new", pageSize: 5 }).then((r) => r.items) : Promise.resolve(undefined),
+    browsing && sido ? searchBenefits({ ...base, localOnly: true, pageSize: 5 }).then((r) => r.items) : Promise.resolve(undefined),
+    !browsing
+      ? searchBenefits({
+          ...base,
+          localOnly: list === "local",
+          newDays: list === "new" ? 60 : null,
+          sort: list === "new" ? "new" : "views",
+          page,
+          pageSize,
+        })
+      : Promise.resolve(undefined),
+  ]);
+  return c.html(
+    <Layout title="나에게 맞는 혜택" description="정부와 지자체가 주는 지원금과 혜택을 사는 곳과 나이에 맞춰 찾아보세요." tab="benefits" runs={runs}>
+      <BenefitsPage
+        b={b}
+        regions={regions}
+        fields={fields}
+        counts={counts}
+        popular={popular}
+        fresh={fresh}
+        local={local}
+        list={listed}
+        pageSize={pageSize}
+        hasData={!!any[0]?.ok}
+      />
+    </Layout>,
+  );
+});
+
+app.get("/benefits/:id", async (c) => {
+  const id = c.req.param("id");
+  if (!/^[A-Za-z0-9_-]{1,40}$/.test(id)) return c.notFound();
+  const [d, runs] = await Promise.all([benefitById(id), lastRuns()]);
+  if (!d) return c.notFound();
+  return c.html(
+    <Layout title={tidy(d.name)} description={tidy(d.summary) || `${tidy(d.name)} 혜택 안내`} tab="benefits" runs={runs}>
+      <BenefitDetailPage d={d} />
     </Layout>,
   );
 });
@@ -336,7 +462,7 @@ app.get("/healthz", async (c) => {
 
 /* ------------------------------ ingest ------------------------------ */
 
-const JOBS: Job[] = ["hygiene", "prices", "grades"];
+const JOBS: Job[] = ["hygiene", "prices", "grades", "benefits", "goods"];
 
 // Neon Function Trigger(cron)가 POST /cron/:job 을 부른다. 헤더와 본문 검증은 parseTriggerDelivery가 한다.
 app.post("/cron/:job", async (c) => {
@@ -411,6 +537,28 @@ app.post("/admin/seed-prices", async (c) => {
   const saved = await upsertPrices(recs);
   await query(`INSERT INTO ingest_runs (job, trigger, finished_at, status, rows, message) VALUES ('prices','seed',now(),'ok',$1,'초기 자료 적재')`, [saved]);
   return c.json({ ok: true, rows: saved });
+});
+
+// 공공데이터 API 응답 형식 확인용 (관리자만, 허용한 주소만, 키는 서버에서 붙이고 결과에서 가림)
+app.get("/admin/probe/api", async (c) => {
+  if (!isAdmin(c)) return c.json({ error: "unauthorized" }, 401);
+  let u: URL;
+  try {
+    u = new URL(c.req.query("url") ?? "");
+  } catch {
+    return c.json({ error: "bad url" }, 400);
+  }
+  if (!["api.odcloud.kr", "apis.data.go.kr"].includes(u.hostname)) return c.json({ error: "host not allowed" }, 403);
+  const key = process.env.DATAKR_API_KEY ?? "";
+  const qs = u.search ? `${u.search}&` : "?";
+  const target = `${u.origin}${u.pathname}${qs}serviceKey=${/%[0-9A-F]{2}/i.test(key) ? key : encodeURIComponent(key)}`;
+  try {
+    const res = await fetch(target, { signal: AbortSignal.timeout(30_000) });
+    const text = await res.text();
+    return c.json({ status: res.status, body: redact(text.slice(0, 6000)) });
+  } catch (err) {
+    return c.json({ error: redact(String(err)) }, 502);
+  }
 });
 
 // 원본 응답의 필드 이름 확인용 (키는 노출하지 않음)

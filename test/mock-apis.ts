@@ -170,6 +170,76 @@ function priceRows(ymd: string) {
   return rows;
 }
 
+// 공공서비스(혜택) 가짜 자료 (odcloud gov24 형식)
+function makeBenefits() {
+  const mk = (id: string, name: string, field: string, agency: string, agencyType: string, views: number, reg: string, extra: Record<string, unknown> = {}) => ({
+    서비스ID: id, 서비스명: name, 서비스목적요약: `${name} 요약`, 서비스분야: field, 사용자구분: "개인", 지원유형: "현금",
+    소관기관명: agency, 소관기관유형: agencyType, 부서명: "담당과", 지원대상: "○ 대상자\r\n- 소득 기준을 충족하는 사람\r\nㆍ 거주 요건 충족", 선정기준: "○ 기준 1\r\n○ 기준 2",
+    지원내용: "○ 월 최대 20만 원 지원", 신청방법: "온라인신청", 신청기한: "상시신청", 접수기관: agency, 전화문의: "120",
+    상세조회URL: `https://plus.gov.kr/portal/benefitV2/benefitSrvcDtl?svcId=${id}`, 조회수: views, 등록일시: reg, 수정일시: reg, ...extra,
+  });
+  const list = [
+    mk("100000000001", "청년월세 특별지원", "주거·자립", "국토교통부", "중앙행정기관", 90000, "20260101000000"),
+    mk("100000000002", "근로·자녀장려금", "생활안정", "국세청", "중앙행정기관", 200000, "20201217142613"),
+    mk("200000000001", "강남구 출산축하금", "임신·출산", "서울특별시 강남구", "시군구", 5000, "20261020000000"),
+    mk("200000000002", "마포구 어르신 교통비", "보호·돌봄", "서울특별시 마포구", "시군구", 3000, "20261001000000"),
+    mk("300000000001", "서울시 청년수당", "고용·창업", "서울특별시", "광역시도", 40000, "20250101000000"),
+  ];
+  const cond: Record<string, unknown>[] = [
+    { 서비스ID: "100000000001", JA0110: 19, JA0111: 34 },
+    { 서비스ID: "100000000002", JA0110: 18, JA0111: 65 },
+    { 서비스ID: "200000000001", JA0110: 0, JA0111: 150 },
+    { 서비스ID: "200000000002", JA0110: 65, JA0111: 150 },
+    { 서비스ID: "300000000001", JA0110: 19, JA0111: 34 },
+  ];
+  return { list, cond };
+}
+
+// 생필품(참가격) 가짜 자료 (XML)
+function goodsXml(path: string, sp: URLSearchParams): string {
+  const wrap = (inner: string) => `<?xml version="1.0" encoding="UTF-8"?><response><result>${inner}</result></response>`;
+  const vo = (tag: string, o: Record<string, string>) => `<${tag}>${Object.entries(o).map(([k, v]) => `<${k}>${v}</${k}>`).join("")}</${tag}>`;
+  if (path.endsWith("getStandardInfoSvc.do")) {
+    const cc = sp.get("classCode");
+    const T = "iros.openapi.service.vo.stdInfoVO";
+    if (cc === "AL") return wrap([
+      vo(T, { code: "030200000", codeName: "가공식품" }), vo(T, { code: "030201000", codeName: "면류", highCode: "030200000" }),
+      vo(T, { code: "030201001", codeName: "라면", highCode: "030201000" }), vo(T, { code: "030202000", codeName: "유제품", highCode: "030200000" }),
+      vo(T, { code: "030202001", codeName: "우유", highCode: "030202000" }),
+    ].join(""));
+    if (cc === "UT") return wrap([vo(T, { code: "G", codeName: "g" }), vo(T, { code: "ML", codeName: "ml" }), vo(T, { code: "EA", codeName: "개" })].join(""));
+    if (cc === "AR") return wrap(vo(T, { code: "020100000", codeName: "서울특별시" }));
+    return wrap("");
+  }
+  if (path.endsWith("getProductInfoSvc.do")) return wrap([
+    vo("item", { goodId: "224", goodName: "예시 흰우유(1L)", goodSmlclsCode: "030202001", goodTotalCnt: "1000", goodTotalDivCode: "ML" }),
+    vo("item", { goodId: "553", goodName: "예시 라면(5개입)", goodSmlclsCode: "030201001", goodTotalCnt: "5", goodTotalDivCode: "EA", detailMean: "120g*5개" }),
+  ].join(""));
+  if (path.endsWith("getStoreInfoSvc.do")) {
+    const S = "iros.openapi.service.vo.entpInfoVO";
+    return wrap([
+      vo(S, { entpId: "1", entpName: "예시마트 강남점", entpTypeCode: "LM", entpAreaCode: "020100000", roadAddrBasic: "서울특별시 강남구 예시로 1" }),
+      vo(S, { entpId: "2", entpName: "예시슈퍼 마포점", entpTypeCode: "SM", entpAreaCode: "020100000", roadAddrBasic: "서울특별시 마포구 예시로 2" }),
+      vo(S, { entpId: "3", entpName: "예시백화점 부산점", entpTypeCode: "DP", entpAreaCode: "020100000", roadAddrBasic: "부산광역시 해운대구 예시로 3" }),
+    ].join(""));
+  }
+  if (path.endsWith("getProductPriceInfoSvc")) {
+    const day = sp.get("goodInspectDay")!, good = sp.get("goodId");
+    if (!good) return `<?xml version="1.0"?><response><resultCode>05</resultCode><resultMsg>entpId goodId 에 값이 모두 없습니다.</resultMsg></response>`;
+    const surveys: Record<string, number> = { "20261023": 1, "20261009": 0.95 };
+    const f = surveys[day];
+    if (!f) return wrap("");
+    const basePrice = good === "224" ? 3000 : 4500;
+    const P = "iros.openapi.service.vo.goodPriceVO";
+    return wrap([
+      vo(P, { goodInspectDay: day, entpId: "1", goodId: good, goodPrice: String(Math.round(basePrice * f * 0.9)), goodDcYn: "Y", plusoneYn: "N" }),
+      vo(P, { goodInspectDay: day, entpId: "2", goodId: good, goodPrice: String(Math.round(basePrice * f)), goodDcYn: "N", plusoneYn: good === "553" ? "Y" : "N" }),
+      vo(P, { goodInspectDay: day, entpId: "3", goodId: good, goodPrice: String(Math.round(basePrice * f * 1.3)), goodDcYn: "N", plusoneYn: "N" }),
+    ].join(""));
+  }
+  return wrap("");
+}
+
 export function startMock(port: number): Promise<Server> {
   const hygiene = makeHygieneRows();
   const grades = makeGradeRows();
@@ -224,6 +294,20 @@ export function startMock(port: number): Promise<Server> {
           body: { dataType: "JSON", items: { item: items }, numOfRows: num, pageNo, totalCount: all.length },
         },
       }));
+    }
+    // 공공서비스(혜택)
+    const bm = url.pathname.match(/^\/api\/gov24\/v3\/(serviceList|supportConditions)$/);
+    if (bm) {
+      if (url.searchParams.get("serviceKey") !== "test-datago-key") { res.statusCode = 401; return res.end("{}"); }
+      const { list, cond } = makeBenefits();
+      const data = bm[1] === "serviceList" ? list : cond;
+      const page = Number(url.searchParams.get("page") || 1), per = Number(url.searchParams.get("perPage") || 10);
+      return res.end(JSON.stringify({ currentCount: data.length, data: data.slice((page - 1) * per, page * per), matchCount: data.length, page, perPage: per, totalCount: data.length }));
+    }
+    // 생필품(참가격)
+    if (url.pathname.startsWith("/B551919/ProductPriceInfoService/")) {
+      res.setHeader("content-type", "application/xml; charset=utf-8");
+      return res.end(goodsXml(url.pathname, url.searchParams));
     }
     res.statusCode = 404;
     res.end("{}");

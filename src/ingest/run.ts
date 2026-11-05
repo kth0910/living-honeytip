@@ -3,8 +3,10 @@ import { redact } from "../lib/util.js";
 import { ingestHygiene } from "./hygiene.js";
 import { ingestPrices } from "./prices.js";
 import { ingestGrades } from "./grades.js";
+import { ingestBenefits } from "./benefits.js";
+import { ingestGoods } from "./goods.js";
 
-export type Job = "hygiene" | "prices" | "grades";
+export type Job = "hygiene" | "prices" | "grades" | "benefits" | "goods";
 
 export async function runJob(job: Job, trigger: string, opts: { budgetMs?: number } = {}) {
   await ensureSchema();
@@ -14,7 +16,15 @@ export async function runJob(job: Job, trigger: string, opts: { budgetMs?: numbe
   );
   try {
     const result =
-      job === "hygiene" ? await ingestHygiene(opts) : job === "grades" ? await ingestGrades(opts) : await ingestPrices(opts);
+      job === "hygiene"
+        ? await ingestHygiene(opts)
+        : job === "grades"
+          ? await ingestGrades(opts)
+          : job === "benefits"
+            ? await ingestBenefits(opts)
+            : job === "goods"
+              ? await ingestGoods(opts)
+              : await ingestPrices(opts);
     await query(
       `UPDATE ingest_runs SET finished_at = now(), status = $2, rows = $3, message = $4 WHERE id = $1`,
       [run.id, result.partial ? "partial" : "ok", result.rows, redact(result.message).slice(0, 2000)],

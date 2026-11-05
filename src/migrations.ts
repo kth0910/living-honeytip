@@ -152,4 +152,101 @@ CREATE INDEX hygiene_grades_name_trgm ON hygiene_grades USING gin (biz_name gin_
 CREATE INDEX hygiene_grades_addr_trgm ON hygiene_grades USING gin (addr gin_trgm_ops);
 `,
   },
+  {
+    // 행정안전부 공공서비스(혜택) 정보
+    id: "007_benefits",
+    sql: `
+CREATE TABLE benefits (
+  id            text PRIMARY KEY,               -- 서비스ID
+  name          text NOT NULL,
+  summary       text,
+  field         text,                           -- 서비스분야
+  user_type     text,                           -- 사용자구분(개인, 가구, 소상공인 ...)
+  support_type  text,                           -- 지원유형(현금, 현물, 서비스 ...)
+  agency        text,
+  agency_type   text,
+  dept          text,
+  target        text,
+  criteria      text,
+  content       text,
+  apply_method  text,
+  deadline      text,
+  receiver      text,
+  contact       text,
+  url           text,
+  views         integer NOT NULL DEFAULT 0,
+  registered_at timestamptz,
+  modified_at   timestamptz,
+  age_min       integer,
+  age_max       integer,
+  sido          text,                           -- 지자체 혜택이면 그 지역, 전국 혜택이면 NULL
+  sigungu       text,
+  conditions    jsonb,
+  raw           jsonb NOT NULL,
+  seen_at       timestamptz NOT NULL DEFAULT now(),
+  ended_at      timestamptz                     -- 목록에서 사라진 혜택
+);
+CREATE INDEX benefits_views_idx ON benefits (views DESC) WHERE ended_at IS NULL;
+CREATE INDEX benefits_registered_idx ON benefits (registered_at DESC) WHERE ended_at IS NULL;
+CREATE INDEX benefits_region_idx ON benefits (sido, sigungu);
+CREATE INDEX benefits_field_idx ON benefits (field);
+CREATE INDEX benefits_name_trgm ON benefits USING gin (name gin_trgm_ops);
+CREATE INDEX benefits_summary_trgm ON benefits USING gin (summary gin_trgm_ops);
+`,
+  },
+  {
+    // 한국소비자원 생필품 가격(참가격)
+    id: "008_goods",
+    sql: `
+CREATE TABLE goods (
+  id          text PRIMARY KEY,
+  name        text NOT NULL,
+  small_code  text,
+  small_name  text,
+  mid_name    text,
+  top_name    text,
+  total_cnt   text,
+  total_unit  text,
+  detail      text
+);
+CREATE INDEX goods_name_trgm ON goods USING gin (name gin_trgm_ops);
+CREATE TABLE goods_stores (
+  id         text PRIMARY KEY,
+  name       text NOT NULL,
+  type_code  text,
+  type_name  text,
+  addr       text,
+  sido       text,
+  sigungu    text
+);
+CREATE TABLE goods_prices (
+  survey_day date NOT NULL,
+  good_id    text NOT NULL,
+  store_id   text NOT NULL,
+  price      integer NOT NULL,
+  discount   boolean NOT NULL DEFAULT false,
+  plusone    boolean NOT NULL DEFAULT false,
+  dc_start   date,
+  dc_end     date,
+  PRIMARY KEY (survey_day, good_id, store_id)
+);
+CREATE INDEX goods_prices_good_idx ON goods_prices (good_id, survey_day DESC);
+CREATE TABLE goods_stats (
+  survey_day date NOT NULL,
+  good_id    text NOT NULL,
+  region     text NOT NULL,          -- '0000' 전국, 그 밖은 시도
+  n          integer NOT NULL,
+  avg_price  integer NOT NULL,
+  min_price  integer NOT NULL,
+  max_price  integer NOT NULL,
+  lm_avg     integer,                -- 대형마트 평균
+  sm_avg     integer,                -- 슈퍼마켓 평균
+  dp_avg     integer,                -- 백화점 평균
+  cs_avg     integer,                -- 편의점 평균
+  discounts  integer NOT NULL DEFAULT 0,
+  plusones   integer NOT NULL DEFAULT 0,
+  PRIMARY KEY (survey_day, good_id, region)
+);
+`,
+  },
 ];

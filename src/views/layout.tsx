@@ -7,12 +7,13 @@ import type { RunInfo } from "../data.js";
 
 export { Empty } from "./ui.js";
 
-export type Tab = "home" | "hygiene" | "prices" | "about";
+export type Tab = "home" | "hygiene" | "prices" | "benefits" | "about";
 
 const TABS: { tab: Tab; href: string; label: string; icon: IconName }[] = [
   { tab: "home", href: "/", label: "홈", icon: "home" },
   { tab: "hygiene", href: "/hygiene", label: "식당 위생", icon: "bowl" },
-  { tab: "prices", href: "/prices", label: "장보기 시세", icon: "basket" },
+  { tab: "prices", href: "/prices", label: "장보기", icon: "basket" },
+  { tab: "benefits", href: "/benefits", label: "혜택", icon: "gift" },
 ];
 
 // Pretendard (SIL OFL) 웹폰트. 실패해도 시스템 글꼴로 보인다.
@@ -70,7 +71,7 @@ export function Layout(props: {
         <footer>
           <div class="wrap stack">
             <p>
-              식품의약품안전처 식품안전나라의 행정처분 결과와 한국농수산식품유통공사(aT)의 일별 도소매 가격정보를
+              식품의약품안전처 식품안전나라, 한국농수산식품유통공사(aT), 한국소비자원, 행정안전부가 공개한 자료를
               쉽게 볼 수 있게 정리했어요. 원본과 차이가 있을 수 있어요.
             </p>
             <p>

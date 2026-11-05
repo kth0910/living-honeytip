@@ -1,4 +1,6 @@
 import type { BizSummary, GradeRow, PriceRow, RegionCount } from "../data.js";
+import type { BenefitRow } from "../benefits-data.js";
+import { BenefitRowItem } from "./benefits.js";
 import { weeklyChange } from "../data.js";
 import { BizRow, GradeRowItem, RegionOptions, SearchBox } from "./hygiene.js";
 import { Move } from "./prices.js";
@@ -10,6 +12,7 @@ export function HomePage(props: {
   regions: RegionCount[];
   recent: BizSummary[];
   graded: { items: GradeRow[]; total: number };
+  benefits: { items: BenefitRow[]; total: number };
   priceDate: string | null;
   drops: PriceRow[];
   rises: PriceRow[];
@@ -40,6 +43,16 @@ export function HomePage(props: {
             </a>
           </li>
           <li>
+            <a class="row" href="/benefits">
+              <Tile icon="gift" color="blue" />
+              <div class="main">
+                <div class="title">나에게 맞는 혜택</div>
+                <div class="sub">사는 곳과 나이로 받을 수 있는 지원금을 찾아봐요</div>
+              </div>
+              <Icon name="chevron-right" class="chev" />
+            </a>
+          </li>
+          <li>
             <a class="row" href="/prices">
               <Tile icon="basket" color="green" />
               <div class="main">
@@ -51,6 +64,22 @@ export function HomePage(props: {
           </li>
         </ul>
       </section>
+
+      {props.benefits.items.length > 0 && (
+        <section class="card flush" aria-labelledby="h-ben">
+          <SectionHead id="h-ben" title={`${regionLabel}에서 많이 찾는 혜택`} more={{ href: "/benefits", label: "더 보기" }} />
+          <p class="small t3" style="padding:0 20px 4px">
+            받을 수 있는 혜택 {props.benefits.total.toLocaleString()}개 중에서
+          </p>
+          <ul class="rows">
+            {props.benefits.items.map((b) => (
+              <li>
+                <BenefitRowItem b={b} />
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
       {(props.drops.length > 0 || props.rises.length > 0) && (
         <section class="card flush" aria-labelledby="h-price">

@@ -3,6 +3,7 @@ import { weeklyChange } from "../data.js";
 import { itemSub, itemTitle, josa, koDate, kindName, pct, rankLabel, shortDate, tidy, trendOf, won, type Trend } from "./format.js";
 import { Empty, Icon, SectionHead, Select } from "./ui.js";
 import { PRICE_PAGE_SIZE } from "./client.js";
+import { PriceTabs } from "./goods.js";
 
 const CAT_ORDER = ["200", "400", "500", "600", "100", "300"];
 const CAT_SHORT: Record<string, string> = {
@@ -82,6 +83,7 @@ export function PricesPage(props: {
       <>
         <h1 class="page-title">이번 주 장보기 시세</h1>
         <p class="page-sub">채소, 과일, 고기, 생선의 소매가격을 지난주와 비교해 알려드려요.</p>
+        <PriceTabs active="farm" />
         <div class="card">
           <Empty icon="clock" title="아직 가격 정보를 불러오는 중이에요">
             <p>가격 조사 자료는 평일 오후에 올라와요. 잠시 후 다시 확인해 주세요.</p>
@@ -116,6 +118,7 @@ export function PricesPage(props: {
       <p class="page-sub">
         {koDate(date)} 조사한 {props.regionName} 평균 소매가예요.
       </p>
+      <PriceTabs active="farm" />
 
       <section class="card">
         <p class="strong" style="font-size:19px;line-height:1.45">
