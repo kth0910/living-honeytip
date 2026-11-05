@@ -176,6 +176,15 @@ await step("goods ingest (XML) and pages: averages, store types, cheapest stores
   assert.equal(seoul.status, 200);
   assert.ok(!seoul.text.includes("예시백화점 부산점"), "region filter on stores");
   assert.equal((await get("/prices/goods/abc")).status, 404);
+  // 다 받은 뒤 다시 돌리면 호출 없이 끝난다
+  const again = await runJob("goods", "test");
+  assert.equal(again.status, "ok");
+  assert.match(again.message, /모두 받아 둠/);
+  // 같은 작업이 돌고 있으면 겹쳐 돌지 않는다
+  await query(`INSERT INTO ingest_runs (job, trigger) VALUES ('goods', 'other')`);
+  const overlap = await runJob("goods", "test");
+  assert.equal(overlap.status, "skipped");
+  await query(`DELETE FROM ingest_runs WHERE job = 'goods' AND trigger = 'other'`);
 });
 
 await step("bad API keys are reported as errors in ingest_runs (no secrets leaked)", async () => {

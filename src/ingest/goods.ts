@@ -200,7 +200,7 @@ async function summarize(day: string) {
   );
 }
 
-type State = { day?: string; done?: string[]; prevDay?: string; prevDone?: string[]; finished?: string[] };
+type State = { day?: string; done?: string[]; prevDay?: string; prevDone?: string[]; finished?: string[]; checkedAt?: string };
 
 /**
  * 최근 조사일과 그 전 조사일(약 2주 전)의 가격을 받는다. 상품마다 한 번씩 부르므로
@@ -211,6 +211,15 @@ export async function ingestGoods(opts: { budgetMs?: number } = {}) {
   const deadline = Date.now() + (opts.budgetMs ?? 8 * 60_000);
   const maxCalls = Number(process.env.GOODS_MAX_CALLS_PER_RUN) || 1800;
   const log: string[] = [];
+  {
+    // 이미 다 받았고 20시간 안에 확인했으면 호출 없이 끝낸다 (하루 호출 제한 보호)
+    const [row] = await query<{ state: State }>(`SELECT state FROM ingest_state WHERE job = 'goods'`);
+    const s0 = row?.state;
+    const fin = new Set(s0?.finished ?? []);
+    if (s0?.checkedAt && Date.now() - Date.parse(s0.checkedAt) < 20 * 3600_000 && s0.day && fin.has(s0.day) && (!s0.prevDay || fin.has(s0.prevDay))) {
+      return { rows: 0, message: `${s0.day} 조사까지 모두 받아 둠, 다음 확인은 내일`, partial: false };
+    }
+  }
   const cat = await syncCatalog();
   log.push(`상품 ${cat.goods}개, 판매점 ${cat.stores}곳`);
 
@@ -247,6 +256,7 @@ export async function ingestGoods(opts: { budgetMs?: number } = {}) {
     }
   }
   st.finished = [...finished].sort().slice(-6);
+  st.checkedAt = new Date().toISOString();
   await query(
     `INSERT INTO ingest_state (job, state, updated_at) VALUES ('goods', $1, now())
      ON CONFLICT (job) DO UPDATE SET state = EXCLUDED.state, updated_at = now()`,
