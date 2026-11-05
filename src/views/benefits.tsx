@@ -381,9 +381,13 @@ export function BenefitDetailPage(props: { d: BenefitDetail }) {
   const d = props.d;
   const where = d.sigungu ? `${d.sido} ${d.sigungu}` : d.sido ? `${d.sido} 전체` : "전국";
   const age =
-    d.age_min !== null && d.age_max !== null && !(d.age_min <= 0 && d.age_max >= 100)
-      ? `${d.age_min}세부터 ${d.age_max}세까지`
-      : null;
+    d.age_min === null || d.age_max === null || (d.age_min <= 0 && d.age_max >= 100)
+      ? null
+      : d.age_max >= 100
+        ? `${d.age_min}세 이상`
+        : d.age_min <= 0
+          ? `${d.age_max}세 이하`
+          : `${d.age_min}세부터 ${d.age_max}세까지`;
   const over = d.days_left !== null && d.days_left < 0;
   return (
     <>
